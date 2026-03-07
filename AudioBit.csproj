@@ -1,0 +1,35 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">AnyCPU</Platform>
+    <BuildProjectReferences>false</BuildProjectReferences>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectToBuild Include="AudioBit.UI\AudioBit.UI.csproj" />
+    <ProjectToBuild Include="AudioBit.App\AudioBit.App.csproj" />
+  </ItemGroup>
+
+  <Target Name="Restore">
+    <MSBuild Projects="@(ProjectToBuild)"
+             Targets="Restore"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);MSBuildEnableWorkloadResolver=false" />
+  </Target>
+
+  <Target Name="Build" DependsOnTargets="Restore">
+    <MSBuild Projects="@(ProjectToBuild)"
+             Targets="Build"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);MSBuildEnableWorkloadResolver=false" />
+  </Target>
+
+  <Target Name="Clean">
+    <MSBuild Projects="@(ProjectToBuild)"
+             Targets="Clean"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);MSBuildEnableWorkloadResolver=false" />
+  </Target>
+
+  <Target Name="Rebuild" DependsOnTargets="Clean;Build" />
+</Project>
