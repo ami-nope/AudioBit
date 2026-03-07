@@ -1,45 +1,104 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Color x:Key="WindowBackgroundColor">#121212</Color>
-    <Color x:Key="WindowSurfaceColor">#171717</Color>
-    <Color x:Key="PanelBackgroundColor">#1E1E1E</Color>
-    <Color x:Key="PanelBorderColor">#2C2C2C</Color>
-    <Color x:Key="PanelHoverColor">#252525</Color>
-    <Color x:Key="AccentColor">#4CAF50</Color>
-    <Color x:Key="AccentLightColor">#6FD675</Color>
-    <Color x:Key="AccentSecondaryColor">#00D1FF</Color>
-    <Color x:Key="TextPrimaryColor">#F5F5F5</Color>
-    <Color x:Key="TextSecondaryColor">#A7A7A7</Color>
-    <Color x:Key="TextTertiaryColor">#7A7A7A</Color>
-    <Color x:Key="MeterTrackColor">#2D2D2D</Color>
-    <Color x:Key="SliderInactiveColor">#3A3A3A</Color>
-    <Color x:Key="HoverOverlayColor">#18FFFFFF</Color>
-    <Color x:Key="CardHighlightColor">#10FFFFFF</Color>
+    <SolidColorBrush x:Key="WindowBackdropBrush" Color="#0D0F16" />
+    <SolidColorBrush x:Key="ShellBorderBrush" Color="#4A4B5D" />
+    <SolidColorBrush x:Key="TopBarBorderBrush" Color="#45475A" />
+    <SolidColorBrush x:Key="BrandTileBorderBrush" Color="#FFB676" />
+    <SolidColorBrush x:Key="BrandGlyphBrush" Color="#FFF7F1" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F4F2F8" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A7A8B7" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#8B8D9E" />
+    <SolidColorBrush x:Key="IconSecondaryBrush" Color="#9A9DAF" />
+    <SolidColorBrush x:Key="AccentOrangeBrush" Color="#FF8D33" />
+    <SolidColorBrush x:Key="AccentGreenBrush" Color="#49BF69" />
+    <SolidColorBrush x:Key="CardBorderBrush" Color="#434557" />
+    <SolidColorBrush x:Key="CardHoverOverlayBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="IconTileBrush" Color="#373848" />
+    <SolidColorBrush x:Key="IconTileBorderBrush" Color="#4A4C60" />
+    <SolidColorBrush x:Key="SliderInactiveBrush" Color="#181924" />
+    <SolidColorBrush x:Key="SliderThumbBrush" Color="#FFF6EE" />
+    <SolidColorBrush x:Key="SliderThumbBorderBrush" Color="#E6CBBE" />
+    <SolidColorBrush x:Key="MutePillBackgroundBrush" Color="#343546" />
+    <SolidColorBrush x:Key="MutePillBorderBrush" Color="#4A4B5F" />
+    <SolidColorBrush x:Key="MutePillHoverBrush" Color="#404154" />
+    <SolidColorBrush x:Key="MutePillActiveBackgroundBrush" Color="#3C2C23" />
+    <SolidColorBrush x:Key="MutePillActiveBorderBrush" Color="#A3653C" />
+    <SolidColorBrush x:Key="DividerBrush" Color="#3A3B4D" />
+    <SolidColorBrush x:Key="FooterBorderBrush" Color="#3A3B4D" />
+    <SolidColorBrush x:Key="FooterHoverBrush" Color="#2E303D" />
+    <SolidColorBrush x:Key="FooterActiveBrush" Color="#FF8D33" />
+    <SolidColorBrush x:Key="FooterInactiveBrush" Color="#8E90A1" />
+    <SolidColorBrush x:Key="OverlayShadeBrush" Color="#8C090B12" />
+    <SolidColorBrush x:Key="OverlayPanelBorderBrush" Color="#4A4C60" />
+    <SolidColorBrush x:Key="OverlayOptionBrush" Color="#2B2D39" />
+    <SolidColorBrush x:Key="OverlayOptionBorderBrush" Color="#4B4D61" />
+    <SolidColorBrush x:Key="OverlayOptionHoverBrush" Color="#353746" />
+    <SolidColorBrush x:Key="OverlaySelectedBrush" Color="#3A3D4F" />
+    <SolidColorBrush x:Key="OverlaySelectedBorderBrush" Color="#6B7088" />
+    <SolidColorBrush x:Key="OverlayPrimaryBorderBrush" Color="#FFC38D" />
+    <SolidColorBrush x:Key="ContextMenuBackgroundBrush" Color="#262735" />
+    <SolidColorBrush x:Key="ContextMenuBorderBrush" Color="#44455A" />
+    <SolidColorBrush x:Key="ContextMenuHoverBrush" Color="#333648" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#66697C" />
+    <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#81859B" />
 
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
-    <SolidColorBrush x:Key="WindowSurfaceBrush" Color="{StaticResource WindowSurfaceColor}" />
-    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="{StaticResource PanelBackgroundColor}" />
-    <SolidColorBrush x:Key="PanelBorderBrush" Color="{StaticResource PanelBorderColor}" />
-    <SolidColorBrush x:Key="PanelHoverBrush" Color="{StaticResource PanelHoverColor}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
-    <SolidColorBrush x:Key="AccentLightBrush" Color="{StaticResource AccentLightColor}" />
-    <SolidColorBrush x:Key="SecondaryAccentBrush" Color="{StaticResource AccentSecondaryColor}" />
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
-    <SolidColorBrush x:Key="TextTertiaryBrush" Color="{StaticResource TextTertiaryColor}" />
-    <SolidColorBrush x:Key="MeterTrackBrush" Color="{StaticResource MeterTrackColor}" />
-    <SolidColorBrush x:Key="SliderInactiveBrush" Color="{StaticResource SliderInactiveColor}" />
-    <SolidColorBrush x:Key="HoverOverlayBrush" Color="{StaticResource HoverOverlayColor}" />
-    <SolidColorBrush x:Key="CardHighlightBrush" Color="{StaticResource CardHighlightColor}" />
-
-    <LinearGradientBrush x:Key="MeterFillBrush" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Offset="0" Color="{StaticResource AccentSecondaryColor}" />
-        <GradientStop Offset="0.65" Color="{StaticResource AccentColor}" />
-        <GradientStop Offset="1" Color="{StaticResource AccentLightColor}" />
+    <LinearGradientBrush x:Key="ShellBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#2B2B39" />
+        <GradientStop Offset="1" Color="#191A24" />
     </LinearGradientBrush>
 
-    <LinearGradientBrush x:Key="WindowTopBarBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Offset="0" Color="#1B1B1B" />
-        <GradientStop Offset="1" Color="#151515" />
+    <LinearGradientBrush x:Key="ShellSheenBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#22FFFFFF" />
+        <GradientStop Offset="1" Color="#00FFFFFF" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="TopBarBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#343545" />
+        <GradientStop Offset="1" Color="#2A2B38" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="BrandTileBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#FF9B3E" />
+        <GradientStop Offset="1" Color="#F36D1E" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="UtilityGroupBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#3C3C4E" />
+        <GradientStop Offset="1" Color="#323344" />
+    </LinearGradientBrush>
+
+    <SolidColorBrush x:Key="UtilityGroupBorderBrush" Color="#4D4E62" />
+    <SolidColorBrush x:Key="UtilityButtonBrush" Color="#343546" />
+    <SolidColorBrush x:Key="UtilityButtonHoverBrush" Color="#404154" />
+    <SolidColorBrush x:Key="UtilityButtonBorderBrush" Color="#4A4C60" />
+
+    <LinearGradientBrush x:Key="CardBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#2A2A38" />
+        <GradientStop Offset="1" Color="#242532" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FooterBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#252632" />
+        <GradientStop Offset="1" Color="#21222D" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="OverlayPanelBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#2E2F3D" />
+        <GradientStop Offset="1" Color="#292A37" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="OverlaySoftCardBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#323340" />
+        <GradientStop Offset="1" Color="#2D2E3B" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="OverlayPrimaryBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#FF8D33" />
+        <GradientStop Offset="1" Color="#F07A1F" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="OverlayPrimaryHoverBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#FF9947" />
+        <GradientStop Offset="1" Color="#F5862D" />
     </LinearGradientBrush>
 </ResourceDictionary>

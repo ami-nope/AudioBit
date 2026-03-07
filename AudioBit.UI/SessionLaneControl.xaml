@@ -1,0 +1,137 @@
+<UserControl x:Class="AudioBit.UI.SessionLaneControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:AudioBit.UI"
+             d:DesignHeight="132"
+             d:DesignWidth="348"
+             mc:Ignorable="d">
+    <Border Margin="0,0,0,12"
+            Padding="14"
+            Background="{DynamicResource LaneBackgroundBrush}"
+            BorderThickness="1"
+            CornerRadius="24"
+            Opacity="{Binding Opacity}">
+        <Border.Style>
+            <Style TargetType="{x:Type Border}">
+                <Setter Property="BorderBrush" Value="{DynamicResource LaneBorderBrush}" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                        <Setter Property="BorderBrush" Value="{DynamicResource LaneActiveBorderBrush}" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsMuted}" Value="True">
+                        <Setter Property="BorderBrush" Value="{DynamicResource LaneBorderBrush}" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+
+        <Grid>
+            <Border Height="2"
+                    Margin="0,0,72,0"
+                    VerticalAlignment="Top"
+                    HorizontalAlignment="Stretch"
+                    Background="{DynamicResource PanelStripeBrush}"
+                    CornerRadius="2"
+                    Opacity="0.95" />
+
+            <Grid Margin="0,10,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Width="42"
+                        Height="42"
+                        Margin="0,0,12,0"
+                        Background="{DynamicResource PanelRaisedBrush}"
+                        BorderBrush="{DynamicResource PanelBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <Image Width="22"
+                           Height="22"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Source="{Binding Icon}"
+                           Stretch="Uniform" />
+                </Border>
+
+                <StackPanel Grid.Column="1"
+                            VerticalAlignment="Center">
+                    <TextBlock FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Text="{Binding AppName}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Text="{Binding ProcessId, StringFormat=PID {0}}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <TextBlock Margin="0,0,10,0"
+                               VerticalAlignment="Center"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Text="{Binding VolumePercentText}" />
+                    <ToggleButton Style="{StaticResource MuteToggleButtonStyle}"
+                                  IsChecked="{Binding IsMuted, Mode=TwoWay}" />
+                </StackPanel>
+
+                <local:GpuPeakMeterControl Grid.Row="1"
+                                           Grid.ColumnSpan="3"
+                                           Height="28"
+                                           Margin="0,14,0,0"
+                                           IsMonitoring="{Binding DataContext.IsMonitoring, RelativeSource={RelativeSource AncestorType=Window}}"
+                                           IsMuted="{Binding IsMuted}"
+                                           LaneOpacity="{Binding Opacity}"
+                                           PeakValue="{Binding Peak}" />
+
+                <Grid Grid.Row="2"
+                      Grid.ColumnSpan="3"
+                      Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Slider Minimum="0"
+                            Maximum="1"
+                            IsMoveToPointEnabled="True"
+                            Style="{StaticResource VolumeSliderStyle}"
+                            Value="{Binding Volume, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <TextBlock Grid.Column="1"
+                               Margin="12,0,0,0"
+                               VerticalAlignment="Center"
+                               FontSize="12"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource AccentCyanBrush}"
+                               Text="MUTED"
+                               Visibility="Collapsed">
+                        <TextBlock.Style>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsMuted}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

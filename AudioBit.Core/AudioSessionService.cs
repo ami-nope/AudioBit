@@ -25,6 +25,9 @@ public sealed class AudioSessionService : IDisposable
     private bool _disposed;
     private bool _defaultDeviceChanged = true;
     private string _currentDeviceName = "No playback device";
+    private bool _hasPlaybackDevice;
+    private float _masterVolume;
+    private bool _isMasterMuted;
 
     public AudioSessionService()
     {
@@ -49,6 +52,39 @@ public sealed class AudioSessionService : IDisposable
             lock (_syncRoot)
             {
                 return _currentDeviceName;
+            }
+        }
+    }
+
+    public bool HasPlaybackDevice
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _hasPlaybackDevice;
+            }
+        }
+    }
+
+    public float MasterVolume
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _masterVolume;
+            }
+        }
+    }
+
+    public bool IsMasterMuted
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _isMasterMuted;
             }
         }
     }
@@ -201,6 +237,77 @@ public sealed class AudioSessionService : IDisposable
         }
     }
 
+    public void SetMasterVolume(float volume)
+    {
+        ThrowIfDisposed();
+
+        var clampedVolume = Math.Clamp(volume, 0.0f, 1.0f);
+        MMDevice? device = null;
+
+        try
+        {
+            device = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            device.AudioEndpointVolume.MasterVolumeLevelScalar = clampedVolume;
+
+            lock (_syncRoot)
+            {
+                _hasPlaybackDevice = true;
+                _currentDeviceName = device.FriendlyName;
+                _masterVolume = clampedVolume;
+                _isMasterMuted = device.AudioEndpointVolume.Mute;
+            }
+        }
+        catch
+        {
+            lock (_syncRoot)
+            {
+                _hasPlaybackDevice = false;
+                _currentDeviceName = "No playback device";
+                _masterVolume = 0.0f;
+                _isMasterMuted = false;
+            }
+        }
+        finally
+        {
+            device?.Dispose();
+        }
+    }
+
+    public void SetMasterMute(bool isMuted)
+    {
+        ThrowIfDisposed();
+
+        MMDevice? device = null;
+
+        try
+        {
+            device = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            device.AudioEndpointVolume.Mute = isMuted;
+
+            lock (_syncRoot)
+            {
+                _hasPlaybackDevice = true;
+                _currentDeviceName = device.FriendlyName;
+                _masterVolume = device.AudioEndpointVolume.MasterVolumeLevelScalar;
+                _isMasterMuted = isMuted;
+            }
+        }
+        catch
+        {
+            lock (_syncRoot)
+            {
+                _hasPlaybackDevice = false;
+                _currentDeviceName = "No playback device";
+                _masterVolume = 0.0f;
+                _isMasterMuted = false;
+            }
+        }
+        finally
+        {
+            device?.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -230,7 +337,10 @@ public sealed class AudioSessionService : IDisposable
         try
         {
             device = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            _hasPlaybackDevice = true;
             _currentDeviceName = device.FriendlyName;
+            _masterVolume = SafeRead(() => device.AudioEndpointVolume.MasterVolumeLevelScalar, 0.0f);
+            _isMasterMuted = SafeRead(() => device.AudioEndpointVolume.Mute, false);
             _defaultDeviceChanged = false;
 
             var sessions = device.AudioSessionManager.Sessions;
@@ -280,7 +390,10 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
+            _hasPlaybackDevice = false;
             _currentDeviceName = "No playback device";
+            _masterVolume = 0.0f;
+            _isMasterMuted = false;
         }
         finally
         {

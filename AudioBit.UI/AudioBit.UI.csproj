@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="WPF-UI" Version="4.2.0" />
+    <Compile Remove="GpuMeterRenderLoop.cs" />
+    <Compile Remove="GpuPeakMeterControl.xaml.cs" />
+    <Compile Remove="SessionLaneControl.xaml.cs" />
+    <Page Remove="GpuPeakMeterControl.xaml" />
+    <Page Remove="SessionLaneControl.xaml" />
   </ItemGroup>
 </Project>
