@@ -13,27 +13,42 @@ namespace AudioBit.Core;
 
 public sealed class AudioSessionService : IDisposable
 {
-    private static readonly TimeSpan SilentRetention = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan SilentRetention = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DeviceInventoryRefreshInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan DeviceRouteRefreshInterval = TimeSpan.FromSeconds(2);
 
     private readonly object _syncRoot = new();
     private readonly MMDeviceEnumerator _deviceEnumerator;
     private readonly EndpointNotificationClient _endpointNotificationClient;
+    private readonly AudioPolicyConfigBridge _audioPolicyConfigBridge;
     private readonly Dictionary<int, AppAudioModel> _appsByProcessId = new();
+    private readonly Dictionary<int, DeviceRouteCacheEntry> _deviceRouteCache = new();
     private readonly Dictionary<string, ImageSource> _iconCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ImageSource _defaultIcon;
 
     private bool _disposed;
     private bool _defaultDeviceChanged = true;
+    private bool _deviceInventoryChanged = true;
+    private DateTime _lastDeviceInventoryRefreshUtc = DateTime.MinValue;
+    private string _currentPlaybackDeviceId = string.Empty;
     private string _currentDeviceName = "No playback device";
+    private string _currentCaptureDeviceId = string.Empty;
+    private string _currentCaptureDeviceName = "No input device";
     private bool _hasPlaybackDevice;
+    private bool _hasCaptureDevice;
     private float _masterVolume;
     private bool _isMasterMuted;
+    private IReadOnlyList<AudioDeviceOptionModel> _renderDeviceOptions = Array.Empty<AudioDeviceOptionModel>();
+    private IReadOnlyList<AudioDeviceOptionModel> _captureDeviceOptions = Array.Empty<AudioDeviceOptionModel>();
 
     public AudioSessionService()
     {
         _defaultIcon = CreateDefaultIcon();
+        _audioPolicyConfigBridge = new AudioPolicyConfigBridge();
         _deviceEnumerator = new MMDeviceEnumerator();
-        _endpointNotificationClient = new EndpointNotificationClient(() => _defaultDeviceChanged = true);
+        _endpointNotificationClient = new EndpointNotificationClient(
+            onDeviceInventoryChanged: () => _deviceInventoryChanged = true,
+            onDefaultPlaybackDeviceChanged: () => _defaultDeviceChanged = true);
 
         try
         {
@@ -67,6 +82,28 @@ public sealed class AudioSessionService : IDisposable
         }
     }
 
+    public string CurrentCaptureDeviceName
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _currentCaptureDeviceName;
+            }
+        }
+    }
+
+    public bool HasCaptureDevice
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _hasCaptureDevice;
+            }
+        }
+    }
+
     public float MasterVolume
     {
         get
@@ -74,6 +111,28 @@ public sealed class AudioSessionService : IDisposable
             lock (_syncRoot)
             {
                 return _masterVolume;
+            }
+        }
+    }
+
+    public IReadOnlyList<AudioDeviceOptionModel> RenderDeviceOptions
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _renderDeviceOptions;
+            }
+        }
+    }
+
+    public IReadOnlyList<AudioDeviceOptionModel> CaptureDeviceOptions
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _captureDeviceOptions;
             }
         }
     }
@@ -104,6 +163,8 @@ public sealed class AudioSessionService : IDisposable
 
             var liveGroups = CollectLiveGroups();
             var visibleProcessIds = new HashSet<int>(liveGroups.Keys);
+
+            RefreshDeviceInventory(now);
 
             foreach (var group in liveGroups.Values)
             {
@@ -139,6 +200,8 @@ public sealed class AudioSessionService : IDisposable
                 }
             }
 
+            RefreshDeviceRoutes(visibleProcessIds, now);
+
             foreach (var model in _appsByProcessId.Values)
             {
                 if (!visibleProcessIds.Contains(model.ProcessId))
@@ -150,19 +213,20 @@ public sealed class AudioSessionService : IDisposable
             var expiredIds = _appsByProcessId.Values
                 .Where(model => model.Peak <= AppAudioModel.SilenceThreshold)
                 .Where(model => now - model.LastAudioTime > SilentRetention)
+                .Where(model => !model.IsMuted || !visibleProcessIds.Contains(model.ProcessId))
                 .Select(model => model.ProcessId)
                 .ToArray();
 
             foreach (var processId in expiredIds)
             {
                 _appsByProcessId.Remove(processId);
+                _deviceRouteCache.Remove(processId);
             }
 
             return _appsByProcessId.Values
-                .OrderByDescending(model => model.IsActive)
-                .ThenByDescending(model => model.Peak)
-                .ThenByDescending(model => model.LastAudioTime)
+                .OrderBy(model => GetMixerPriority(model.AppName))
                 .ThenBy(model => model.AppName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(model => model.ProcessId)
                 .Select(model => model.Clone())
                 .ToList();
         }
@@ -190,6 +254,10 @@ public sealed class AudioSessionService : IDisposable
             if (_appsByProcessId.TryGetValue(processId, out var model))
             {
                 model.Volume = clampedVolume;
+                if (clampedVolume <= AppAudioModel.SilenceThreshold)
+                {
+                    model.Peak = 0.0f;
+                }
             }
         }
     }
@@ -214,8 +282,22 @@ public sealed class AudioSessionService : IDisposable
             if (_appsByProcessId.TryGetValue(processId, out var model))
             {
                 model.IsMuted = isMuted;
+                if (isMuted)
+                {
+                    model.Peak = 0.0f;
+                }
             }
         }
+    }
+
+    public void SetPreferredPlaybackDevice(int processId, string? deviceId)
+    {
+        SetPreferredDevice(processId, AudioDeviceFlow.Render, deviceId);
+    }
+
+    public void SetPreferredCaptureDevice(int processId, string? deviceId)
+    {
+        SetPreferredDevice(processId, AudioDeviceFlow.Capture, deviceId);
     }
 
     public void SetAllMuted(bool isMuted)
@@ -233,6 +315,10 @@ public sealed class AudioSessionService : IDisposable
             foreach (var model in _appsByProcessId.Values)
             {
                 model.IsMuted = isMuted;
+                if (isMuted)
+                {
+                    model.Peak = 0.0f;
+                }
             }
         }
     }
@@ -252,6 +338,7 @@ public sealed class AudioSessionService : IDisposable
             lock (_syncRoot)
             {
                 _hasPlaybackDevice = true;
+                _currentPlaybackDeviceId = SafeRead(() => device.ID, string.Empty);
                 _currentDeviceName = device.FriendlyName;
                 _masterVolume = clampedVolume;
                 _isMasterMuted = device.AudioEndpointVolume.Mute;
@@ -262,6 +349,7 @@ public sealed class AudioSessionService : IDisposable
             lock (_syncRoot)
             {
                 _hasPlaybackDevice = false;
+                _currentPlaybackDeviceId = string.Empty;
                 _currentDeviceName = "No playback device";
                 _masterVolume = 0.0f;
                 _isMasterMuted = false;
@@ -287,6 +375,7 @@ public sealed class AudioSessionService : IDisposable
             lock (_syncRoot)
             {
                 _hasPlaybackDevice = true;
+                _currentPlaybackDeviceId = SafeRead(() => device.ID, string.Empty);
                 _currentDeviceName = device.FriendlyName;
                 _masterVolume = device.AudioEndpointVolume.MasterVolumeLevelScalar;
                 _isMasterMuted = isMuted;
@@ -297,9 +386,77 @@ public sealed class AudioSessionService : IDisposable
             lock (_syncRoot)
             {
                 _hasPlaybackDevice = false;
+                _currentPlaybackDeviceId = string.Empty;
                 _currentDeviceName = "No playback device";
                 _masterVolume = 0.0f;
                 _isMasterMuted = false;
+            }
+        }
+        finally
+        {
+            device?.Dispose();
+        }
+    }
+
+    public void SetDefaultCaptureMute(bool isMuted)
+    {
+        ThrowIfDisposed();
+
+        MMDevice? device = null;
+
+        try
+        {
+            device = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+            device.AudioEndpointVolume.Mute = isMuted;
+
+            lock (_syncRoot)
+            {
+                _hasCaptureDevice = true;
+                _currentCaptureDeviceId = SafeRead(() => device.ID, string.Empty);
+                _currentCaptureDeviceName = device.FriendlyName;
+            }
+        }
+        catch
+        {
+            lock (_syncRoot)
+            {
+                _hasCaptureDevice = false;
+                _currentCaptureDeviceId = string.Empty;
+                _currentCaptureDeviceName = "No input device";
+            }
+        }
+        finally
+        {
+            device?.Dispose();
+        }
+    }
+
+    public void ToggleDefaultCaptureMute()
+    {
+        ThrowIfDisposed();
+
+        MMDevice? device = null;
+
+        try
+        {
+            device = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+            var nextMuted = !SafeRead(() => device.AudioEndpointVolume.Mute, false);
+            device.AudioEndpointVolume.Mute = nextMuted;
+
+            lock (_syncRoot)
+            {
+                _hasCaptureDevice = true;
+                _currentCaptureDeviceId = SafeRead(() => device.ID, string.Empty);
+                _currentCaptureDeviceName = device.FriendlyName;
+            }
+        }
+        catch
+        {
+            lock (_syncRoot)
+            {
+                _hasCaptureDevice = false;
+                _currentCaptureDeviceId = string.Empty;
+                _currentCaptureDeviceName = "No input device";
             }
         }
         finally
@@ -338,6 +495,7 @@ public sealed class AudioSessionService : IDisposable
         {
             device = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
             _hasPlaybackDevice = true;
+            _currentPlaybackDeviceId = SafeRead(() => device.ID, string.Empty);
             _currentDeviceName = device.FriendlyName;
             _masterVolume = SafeRead(() => device.AudioEndpointVolume.MasterVolumeLevelScalar, 0.0f);
             _isMasterMuted = SafeRead(() => device.AudioEndpointVolume.Mute, false);
@@ -365,6 +523,14 @@ public sealed class AudioSessionService : IDisposable
                     var peak = audioMeter.MasterPeakValue;
                     var volume = simpleAudioVolume.Volume;
                     var isMuted = simpleAudioVolume.Mute;
+                    var effectivePeak = isMuted || _isMasterMuted || volume <= AppAudioModel.SilenceThreshold
+                        ? 0.0f
+                        : Math.Clamp(peak * volume, 0.0f, 1.0f);
+
+                    if (effectivePeak <= AppAudioModel.SilenceThreshold * 0.75f)
+                    {
+                        effectivePeak = 0.0f;
+                    }
 
                     if (!groups.TryGetValue(processId, out var group))
                     {
@@ -373,7 +539,7 @@ public sealed class AudioSessionService : IDisposable
                         groups.Add(processId, group);
                     }
 
-                    group.Peak = Math.Max(group.Peak, peak);
+                    group.Peak = Math.Max(group.Peak, effectivePeak);
                     group.VolumeSum += volume;
                     group.SessionCount++;
                     group.AllMuted &= isMuted;
@@ -391,6 +557,7 @@ public sealed class AudioSessionService : IDisposable
         catch
         {
             _hasPlaybackDevice = false;
+            _currentPlaybackDeviceId = string.Empty;
             _currentDeviceName = "No playback device";
             _masterVolume = 0.0f;
             _isMasterMuted = false;
@@ -444,6 +611,197 @@ public sealed class AudioSessionService : IDisposable
         {
             device?.Dispose();
         }
+    }
+
+    private void SetPreferredDevice(int processId, AudioDeviceFlow flow, string? deviceId)
+    {
+        ThrowIfDisposed();
+
+        var normalizedDeviceId = string.IsNullOrWhiteSpace(deviceId) ? string.Empty : deviceId;
+        if (!_audioPolicyConfigBridge.TrySetPersistedDefaultAudioEndpoint(processId, flow, normalizedDeviceId))
+        {
+            return;
+        }
+
+        lock (_syncRoot)
+        {
+            if (!_deviceRouteCache.TryGetValue(processId, out var route))
+            {
+                route = new DeviceRouteCacheEntry();
+                _deviceRouteCache[processId] = route;
+            }
+
+            route.LastUpdatedUtc = DateTime.UtcNow;
+
+            if (flow == AudioDeviceFlow.Render)
+            {
+                route.RenderDeviceId = normalizedDeviceId;
+
+                if (_appsByProcessId.TryGetValue(processId, out var model))
+                {
+                    model.PreferredRenderDeviceId = normalizedDeviceId;
+                }
+            }
+            else
+            {
+                route.CaptureDeviceId = normalizedDeviceId;
+
+                if (_appsByProcessId.TryGetValue(processId, out var model))
+                {
+                    model.PreferredCaptureDeviceId = normalizedDeviceId;
+                }
+            }
+        }
+    }
+
+    private void RefreshDeviceInventory(DateTime now)
+    {
+        if (!_deviceInventoryChanged && now - _lastDeviceInventoryRefreshUtc < DeviceInventoryRefreshInterval)
+        {
+            return;
+        }
+
+        _lastDeviceInventoryRefreshUtc = now;
+        _deviceInventoryChanged = false;
+
+        MMDevice? defaultPlaybackDevice = null;
+        MMDevice? defaultCaptureDevice = null;
+
+        try
+        {
+            defaultPlaybackDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            _currentPlaybackDeviceId = SafeRead(() => defaultPlaybackDevice.ID, string.Empty);
+            _currentDeviceName = SafeRead(() => defaultPlaybackDevice.FriendlyName, "No playback device");
+            _hasPlaybackDevice = true;
+        }
+        catch
+        {
+            _currentPlaybackDeviceId = string.Empty;
+            _currentDeviceName = "No playback device";
+            _hasPlaybackDevice = false;
+        }
+
+        try
+        {
+            defaultCaptureDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+            _currentCaptureDeviceId = SafeRead(() => defaultCaptureDevice.ID, string.Empty);
+            _currentCaptureDeviceName = SafeRead(() => defaultCaptureDevice.FriendlyName, "No input device");
+            _hasCaptureDevice = true;
+        }
+        catch
+        {
+            _currentCaptureDeviceId = string.Empty;
+            _currentCaptureDeviceName = "No input device";
+            _hasCaptureDevice = false;
+        }
+        finally
+        {
+            defaultPlaybackDevice?.Dispose();
+            defaultCaptureDevice?.Dispose();
+        }
+
+        _renderDeviceOptions = CreateDeviceOptions(
+            DataFlow.Render,
+            _currentDeviceName,
+            _currentPlaybackDeviceId,
+            AudioDeviceFlow.Render);
+
+        _captureDeviceOptions = CreateDeviceOptions(
+            DataFlow.Capture,
+            _currentCaptureDeviceName,
+            _currentCaptureDeviceId,
+            AudioDeviceFlow.Capture);
+    }
+
+    private void RefreshDeviceRoutes(HashSet<int> visibleProcessIds, DateTime now)
+    {
+        foreach (var processId in visibleProcessIds)
+        {
+            if (!_deviceRouteCache.TryGetValue(processId, out var route)
+                || now - route.LastUpdatedUtc >= DeviceRouteRefreshInterval)
+            {
+                route = ReadDeviceRouteCacheEntry(processId, now);
+                _deviceRouteCache[processId] = route;
+            }
+
+            if (_appsByProcessId.TryGetValue(processId, out var model))
+            {
+                model.PreferredRenderDeviceId = route.RenderDeviceId;
+                model.PreferredCaptureDeviceId = route.CaptureDeviceId;
+            }
+        }
+    }
+
+    private DeviceRouteCacheEntry ReadDeviceRouteCacheEntry(int processId, DateTime now)
+    {
+        var route = new DeviceRouteCacheEntry
+        {
+            LastUpdatedUtc = now,
+        };
+
+        if (_audioPolicyConfigBridge.TryGetPersistedDefaultAudioEndpoint(processId, AudioDeviceFlow.Render, out var renderDeviceId))
+        {
+            route.RenderDeviceId = renderDeviceId;
+        }
+
+        if (_audioPolicyConfigBridge.TryGetPersistedDefaultAudioEndpoint(processId, AudioDeviceFlow.Capture, out var captureDeviceId))
+        {
+            route.CaptureDeviceId = captureDeviceId;
+        }
+
+        return route;
+    }
+
+    private IReadOnlyList<AudioDeviceOptionModel> CreateDeviceOptions(
+        DataFlow dataFlow,
+        string defaultDeviceName,
+        string defaultDeviceId,
+        AudioDeviceFlow flow)
+    {
+        var options = new List<AudioDeviceOptionModel>
+        {
+            new(
+                id: string.Empty,
+                displayName: $"System default - {defaultDeviceName}",
+                flow: flow,
+                isSystemDefault: true),
+        };
+
+        MMDeviceCollection? devices = null;
+
+        try
+        {
+            devices = _deviceEnumerator.EnumerateAudioEndPoints(dataFlow, DeviceState.Active);
+            var activeDevices = new List<(string Id, string Name, bool IsDefault)>();
+
+            foreach (MMDevice device in devices)
+            {
+                try
+                {
+                    activeDevices.Add((
+                        SafeRead(() => device.ID, string.Empty),
+                        SafeRead(() => device.FriendlyName, "Unknown device"),
+                        string.Equals(SafeRead(() => device.ID, string.Empty), defaultDeviceId, StringComparison.OrdinalIgnoreCase)));
+                }
+                finally
+                {
+                    device.Dispose();
+                }
+            }
+
+            foreach (var device in activeDevices
+                         .OrderByDescending(item => item.IsDefault)
+                         .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                options.Add(new AudioDeviceOptionModel(device.Id, device.Name, flow));
+            }
+        }
+        catch
+        {
+            // Device enumeration is best effort; keep the system default option.
+        }
+
+        return options;
     }
 
     private (string AppName, ImageSource Icon) ResolveAppIdentity(int processId, string? displayName)
@@ -555,6 +913,36 @@ public sealed class AudioSessionService : IDisposable
         return "Unknown";
     }
 
+    private static int GetMixerPriority(string? appName)
+    {
+        if (string.IsNullOrWhiteSpace(appName))
+        {
+            return 3;
+        }
+
+        if (ContainsToken(appName, "discord"))
+        {
+            return 0;
+        }
+
+        if (ContainsToken(appName, "spotify"))
+        {
+            return 1;
+        }
+
+        if (ContainsToken(appName, "brave") || ContainsToken(appName, "chrome"))
+        {
+            return 2;
+        }
+
+        return 3;
+    }
+
+    private static bool ContainsToken(string source, string token)
+    {
+        return source.Contains(token, StringComparison.OrdinalIgnoreCase);
+    }
+
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -588,41 +976,54 @@ public sealed class AudioSessionService : IDisposable
         public float AverageVolume => SessionCount == 0 ? 1.0f : VolumeSum / SessionCount;
     }
 
+    private sealed class DeviceRouteCacheEntry
+    {
+        public string RenderDeviceId { get; set; } = string.Empty;
+
+        public string CaptureDeviceId { get; set; } = string.Empty;
+
+        public DateTime LastUpdatedUtc { get; set; }
+    }
+
     private sealed class EndpointNotificationClient : IMMNotificationClient
     {
-        private readonly Action _onDeviceChanged;
+        private readonly Action _onDeviceInventoryChanged;
+        private readonly Action _onDefaultPlaybackDeviceChanged;
 
-        public EndpointNotificationClient(Action onDeviceChanged)
+        public EndpointNotificationClient(Action onDeviceInventoryChanged, Action onDefaultPlaybackDeviceChanged)
         {
-            _onDeviceChanged = onDeviceChanged;
+            _onDeviceInventoryChanged = onDeviceInventoryChanged;
+            _onDefaultPlaybackDeviceChanged = onDefaultPlaybackDeviceChanged;
         }
 
         public void OnDeviceStateChanged(string deviceId, DeviceState newState)
         {
-            _onDeviceChanged();
+            _onDeviceInventoryChanged();
         }
 
         public void OnDeviceAdded(string pwstrDeviceId)
         {
-            _onDeviceChanged();
+            _onDeviceInventoryChanged();
         }
 
         public void OnDeviceRemoved(string deviceId)
         {
-            _onDeviceChanged();
+            _onDeviceInventoryChanged();
         }
 
         public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
         {
+            _onDeviceInventoryChanged();
+
             if (flow == DataFlow.Render && role == Role.Multimedia)
             {
-                _onDeviceChanged();
+                _onDefaultPlaybackDeviceChanged();
             }
         }
 
         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key)
         {
-            _onDeviceChanged();
+            _onDeviceInventoryChanged();
         }
     }
 }

@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectToBuild Include="AudioBit.UI\AudioBit.UI.csproj" />
     <ProjectToBuild Include="AudioBit.App\AudioBit.App.csproj" />
+    <ProjectToBuild Include="AudioBit.Installer\AudioBit.Installer.csproj" />
   </ItemGroup>
 
   <Target Name="Restore">

@@ -5,11 +5,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\AudioBit.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AudioBit.Core\AudioBit.Core.csproj" />
     <ProjectReference Include="..\AudioBit.UI\AudioBit.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\AudioBit.ico" />
+    <Resource Include="Assets\AudioBit.ico" />
   </ItemGroup>
 
   <ItemGroup>

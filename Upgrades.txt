@@ -1,0 +1,50 @@
+test un command ----- dotnet run --project .\AudioBit.App\AudioBit.App.csproj
+
+
+
+
+-redesign the entire UI using GPU-accelerated meters
+
+-add device switching
+
+-add per-app mute hotkeys
+
+-add auto-start service
+
+-Per-app output routing is one of the most powerful additions. Let users choose where each application sends audio. For example, Discord to headphones while Spotify goes to speakers. Windows already exposes this through the audio session APIs, but your UI would let users manage it quickly. Pair that with a quick default device switcher in the top bar so the user can flip between speakers, headphones, or Bluetooth devices without opening Windows settings.
+
+
+-A useful companion is device hotkeys. A single keyboard shortcut could instantly switch the entire system output device.
+
+
+-Profiles are extremely useful. Users could create configurations like:
+
+Gaming profile
+Discord louder, music quieter
+
+Streaming profile
+Game medium, Discord loud, browser muted
+
+Work profile
+Zoom loud, everything else muted
+
+Profiles can activate manually or automatically when a specific program launches.
+
+-Add drag-to-reorder rows. Users often want Discord and Spotify pinned to the top.
+
+- Add pinning:
+Pinned apps stay visible even if silent.
+
+- Add quick mute gestures:
+Middle-click on an app row mutes it instantly.
+
+- Add search filtering when many apps appear.
+
+
+- Audio focus mode.
+When a chosen app produces audio, automatically mute others.
+-A remote control system where a native Android/iOS app connects to a specific PC running AudioBit by scanning a QR code or entering a one-time code. After pairing, the phone acts like a wireless control panel that works from anywhere through a cloud relay. The app shows a customizable soundboard and quick controls like mute microphone, change volumes, or switch audio devices. Pressing buttons on the phone sends commands to the PC in real time, similar to using a software Stream Deck for audio control.
+
+
+
+

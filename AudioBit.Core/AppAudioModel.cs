@@ -5,6 +5,7 @@ namespace AudioBit.Core;
 public sealed class AppAudioModel
 {
     public const float SilenceThreshold = 0.01f;
+    public static readonly TimeSpan RecentlyActiveHold = TimeSpan.FromSeconds(3);
 
     public int ProcessId { get; set; }
 
@@ -20,9 +21,15 @@ public sealed class AppAudioModel
 
     public DateTime LastAudioTime { get; set; } = DateTime.UtcNow;
 
-    public bool IsActive => Peak > SilenceThreshold;
+    public string PreferredRenderDeviceId { get; set; } = string.Empty;
 
-    public double Opacity => IsActive ? 1.0 : 0.5;
+    public string PreferredCaptureDeviceId { get; set; } = string.Empty;
+
+    public float AudiblePeak => IsMuted ? 0.0f : Math.Clamp(Peak * Volume, 0.0f, 1.0f);
+
+    public bool IsActive => AudiblePeak > SilenceThreshold;
+
+    public double Opacity => IsActive || DateTime.UtcNow - LastAudioTime <= RecentlyActiveHold ? 1.0 : 0.5;
 
     public AppAudioModel Clone()
     {
@@ -35,6 +42,8 @@ public sealed class AppAudioModel
             Peak = Peak,
             IsMuted = IsMuted,
             LastAudioTime = LastAudioTime,
+            PreferredRenderDeviceId = PreferredRenderDeviceId,
+            PreferredCaptureDeviceId = PreferredCaptureDeviceId,
         };
     }
 }

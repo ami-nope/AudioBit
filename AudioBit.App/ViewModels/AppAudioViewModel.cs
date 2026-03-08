@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Windows;
 using System.Windows.Media;
 using AudioBit.Core;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -6,23 +8,37 @@ namespace AudioBit.App.ViewModels;
 
 public sealed class AppAudioViewModel : ObservableObject
 {
-    private static readonly SolidColorBrush DiscordAccentBrush = CreateBrush("#5B74FF");
-    private static readonly SolidColorBrush BrowserAccentBrush = CreateBrush("#B7BDD0");
-    private static readonly SolidColorBrush SpotifyAccentBrush = CreateBrush("#45D96A");
-    private static readonly SolidColorBrush GameAccentBrush = CreateBrush("#F2C35D");
-    private static readonly SolidColorBrush SystemAccentBrush = CreateBrush("#F28742");
-    private static readonly SolidColorBrush[] FallbackAccentBrushes =
+    private static readonly Brush DiscordAccentBrush = CreateSolidBrush("#5865F2");
+    private static readonly Brush SpotifyAccentBrush = CreateSolidBrush("#1ED760");
+    private static readonly Brush BraveAccentBrush = CreateSolidBrush("#FB542B");
+    private static readonly Brush EdgeAccentBrush = CreateSolidBrush("#1793FF");
+    private static readonly Brush ValorantAccentBrush = CreateSolidBrush("#FF4655");
+    private static readonly Brush ChromeAccentBrush = CreateLinearGradientBrush(
+        ("#4285F4", 0.00),
+        ("#EA4335", 0.33),
+        ("#FBBC05", 0.66),
+        ("#34A853", 1.00));
+    private static readonly Brush FirefoxAccentBrush = CreateLinearGradientBrush(
+        ("#FF7139", 0.00),
+        ("#FF4F5E", 0.42),
+        ("#C43AFF", 1.00));
+    private static readonly Brush BrowserAccentBrush = CreateSolidBrush("#4DA3FF");
+    private static readonly Brush GameAccentBrush = CreateSolidBrush("#F2C35D");
+    private static readonly Brush SystemAccentBrush = CreateSolidBrush("#F28742");
+    private static readonly Brush[] FallbackAccentBrushes =
     [
-        CreateBrush("#6A86FF"),
-        CreateBrush("#4BD58A"),
-        CreateBrush("#F2B652"),
-        CreateBrush("#FF8B6F"),
-        CreateBrush("#8C79FF"),
-        CreateBrush("#61CBE8"),
+        CreateSolidBrush("#6A86FF"),
+        CreateSolidBrush("#4BD58A"),
+        CreateSolidBrush("#F2B652"),
+        CreateSolidBrush("#FF8B6F"),
+        CreateSolidBrush("#8C79FF"),
+        CreateSolidBrush("#61CBE8"),
     ];
 
     private readonly Action<int, float> _setVolume;
     private readonly Action<int, bool> _setMute;
+    private readonly Action<int, string?> _setPreferredPlaybackDevice;
+    private readonly Action<int, string?> _setPreferredCaptureDevice;
 
     private bool _isApplyingSnapshot;
     private int _processId;
@@ -34,17 +50,41 @@ public sealed class AppAudioViewModel : ObservableObject
     private DateTime _lastAudioTime = DateTime.UtcNow;
     private double _opacity = 1.0;
     private Brush _accentBrush = FallbackAccentBrushes[0];
+    private string _selectedPlaybackDeviceId = string.Empty;
+    private string _selectedCaptureDeviceId = string.Empty;
 
-    public AppAudioViewModel(Action<int, float> setVolume, Action<int, bool> setMute)
+    public AppAudioViewModel(
+        ReadOnlyObservableCollection<AudioDeviceOptionModel> playbackDevices,
+        ReadOnlyObservableCollection<AudioDeviceOptionModel> captureDevices,
+        Action<int, float> setVolume,
+        Action<int, bool> setMute,
+        Action<int, string?> setPreferredPlaybackDevice,
+        Action<int, string?> setPreferredCaptureDevice)
     {
+        PlaybackDevices = playbackDevices;
+        CaptureDevices = captureDevices;
         _setVolume = setVolume;
         _setMute = setMute;
+        _setPreferredPlaybackDevice = setPreferredPlaybackDevice;
+        _setPreferredCaptureDevice = setPreferredCaptureDevice;
     }
+
+    public ReadOnlyObservableCollection<AudioDeviceOptionModel> PlaybackDevices { get; }
+
+    public ReadOnlyObservableCollection<AudioDeviceOptionModel> CaptureDevices { get; }
 
     public int ProcessId
     {
         get => _processId;
-        private set => SetProperty(ref _processId, value);
+        private set
+        {
+            if (!SetProperty(ref _processId, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CanRouteDevices));
+        }
     }
 
     public string AppName
@@ -71,6 +111,10 @@ public sealed class AppAudioViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(VolumePercentText));
+            OnPropertyChanged(nameof(DisplayPeak));
+            OnPropertyChanged(nameof(IsActive));
+            OnPropertyChanged(nameof(ShouldShowMeter));
+            OnPropertyChanged(nameof(HasRecentActivityText));
 
             if (_isApplyingSnapshot)
             {
@@ -84,7 +128,19 @@ public sealed class AppAudioViewModel : ObservableObject
     public double Peak
     {
         get => _peak;
-        private set => SetProperty(ref _peak, value);
+        private set
+        {
+            var clamped = Math.Clamp(value, 0.0, 1.0);
+            if (!SetProperty(ref _peak, clamped))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(DisplayPeak));
+            OnPropertyChanged(nameof(IsActive));
+            OnPropertyChanged(nameof(ShouldShowMeter));
+            OnPropertyChanged(nameof(HasRecentActivityText));
+        }
     }
 
     public bool IsMuted
@@ -96,6 +152,11 @@ public sealed class AppAudioViewModel : ObservableObject
             {
                 return;
             }
+
+            OnPropertyChanged(nameof(DisplayPeak));
+            OnPropertyChanged(nameof(IsActive));
+            OnPropertyChanged(nameof(ShouldShowMeter));
+            OnPropertyChanged(nameof(HasRecentActivityText));
 
             if (_isApplyingSnapshot)
             {
@@ -124,9 +185,55 @@ public sealed class AppAudioViewModel : ObservableObject
         private set => SetProperty(ref _accentBrush, value);
     }
 
-    public bool IsActive => Peak > AppAudioModel.SilenceThreshold;
+    public string SelectedPlaybackDeviceId
+    {
+        get => _selectedPlaybackDeviceId;
+        set
+        {
+            var normalized = NormalizeSelectionId(value);
+            if (!SetProperty(ref _selectedPlaybackDeviceId, normalized))
+            {
+                return;
+            }
 
-    public bool HasRecentActivityText => !IsActive;
+            if (_isApplyingSnapshot)
+            {
+                return;
+            }
+
+            _setPreferredPlaybackDevice(ProcessId, normalized);
+        }
+    }
+
+    public string SelectedCaptureDeviceId
+    {
+        get => _selectedCaptureDeviceId;
+        set
+        {
+            var normalized = NormalizeSelectionId(value);
+            if (!SetProperty(ref _selectedCaptureDeviceId, normalized))
+            {
+                return;
+            }
+
+            if (_isApplyingSnapshot)
+            {
+                return;
+            }
+
+            _setPreferredCaptureDevice(ProcessId, normalized);
+        }
+    }
+
+    public double DisplayPeak => IsMuted ? 0.0 : Math.Clamp(Peak * Volume, 0.0, 1.0);
+
+    public bool IsActive => DisplayPeak > AppAudioModel.SilenceThreshold;
+
+    public bool ShouldShowMeter => IsActive || DateTime.UtcNow - LastAudioTime <= AppAudioModel.RecentlyActiveHold;
+
+    public bool HasRecentActivityText => !ShouldShowMeter;
+
+    public bool CanRouteDevices => ProcessId > 0;
 
     public string RecentActivityText => $"last heard {FormatRelativeTime(DateTime.UtcNow - LastAudioTime)}";
 
@@ -145,9 +252,12 @@ public sealed class AppAudioViewModel : ObservableObject
         LastAudioTime = model.LastAudioTime;
         Opacity = model.Opacity;
         AccentBrush = ResolveAccentBrush(model.AppName);
+        SelectedPlaybackDeviceId = model.PreferredRenderDeviceId;
+        SelectedCaptureDeviceId = model.PreferredCaptureDeviceId;
 
         _isApplyingSnapshot = false;
         OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(ShouldShowMeter));
         OnPropertyChanged(nameof(HasRecentActivityText));
         OnPropertyChanged(nameof(RecentActivityText));
     }
@@ -177,10 +287,34 @@ public sealed class AppAudioViewModel : ObservableObject
             return SpotifyAccentBrush;
         }
 
-        if (normalized.Contains("chrome", StringComparison.Ordinal)
-            || normalized.Contains("edge", StringComparison.Ordinal)
-            || normalized.Contains("firefox", StringComparison.Ordinal)
-            || normalized.Contains("browser", StringComparison.Ordinal))
+        if (normalized.Contains("brave", StringComparison.Ordinal))
+        {
+            return BraveAccentBrush;
+        }
+
+        if (normalized.Contains("chrome", StringComparison.Ordinal))
+        {
+            return ChromeAccentBrush;
+        }
+
+        if (normalized.Contains("edge", StringComparison.Ordinal))
+        {
+            return EdgeAccentBrush;
+        }
+
+        if (normalized.Contains("firefox", StringComparison.Ordinal))
+        {
+            return FirefoxAccentBrush;
+        }
+
+        if (normalized.Contains("valorant", StringComparison.Ordinal))
+        {
+            return ValorantAccentBrush;
+        }
+
+        if (normalized.Contains("browser", StringComparison.Ordinal)
+            || normalized.Contains("arc", StringComparison.Ordinal)
+            || normalized.Contains("opera", StringComparison.Ordinal))
         {
             return BrowserAccentBrush;
         }
@@ -239,9 +373,29 @@ public sealed class AppAudioViewModel : ObservableObject
         return days == 1 ? "1 day ago" : $"{days} days ago";
     }
 
-    private static SolidColorBrush CreateBrush(string hexColor)
+    private static string NormalizeSelectionId(string? deviceId)
+    {
+        return string.IsNullOrWhiteSpace(deviceId) ? string.Empty : deviceId;
+    }
+
+    private static SolidColorBrush CreateSolidBrush(string hexColor)
     {
         var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hexColor)!);
+        brush.Freeze();
+        return brush;
+    }
+
+    private static LinearGradientBrush CreateLinearGradientBrush(params (string ColorHex, double Offset)[] stops)
+    {
+        var gradientStops = new GradientStopCollection();
+        foreach (var (colorHex, offset) in stops)
+        {
+            gradientStops.Add(new GradientStop((Color)ColorConverter.ConvertFromString(colorHex)!, offset));
+        }
+
+        gradientStops.Freeze();
+
+        var brush = new LinearGradientBrush(gradientStops, new Point(0, 0.5), new Point(1, 0.5));
         brush.Freeze();
         return brush;
     }

@@ -5,12 +5,4 @@
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Compile Remove="GpuMeterRenderLoop.cs" />
-    <Compile Remove="GpuPeakMeterControl.xaml.cs" />
-    <Compile Remove="SessionLaneControl.xaml.cs" />
-    <Page Remove="GpuPeakMeterControl.xaml" />
-    <Page Remove="SessionLaneControl.xaml" />
-  </ItemGroup>
 </Project>

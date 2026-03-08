@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -7,6 +8,11 @@ namespace AudioBit.UI;
 
 public partial class AudioMeterControl : UserControl
 {
+    private const double PeakAttackPerSecond = 9.5;
+    private const double PeakReleasePerSecond = 4.4;
+    private const double PulseReleasePerSecond = 3.6;
+    private const double StopThreshold = 0.0025;
+
     public static readonly DependencyProperty PeakValueProperty = DependencyProperty.Register(
         nameof(PeakValue),
         typeof(double),
@@ -19,27 +25,43 @@ public partial class AudioMeterControl : UserControl
         typeof(AudioMeterControl),
         new PropertyMetadata(1.0, OnCardOpacityChanged));
 
+    public static readonly DependencyProperty IsLowPerformanceModeProperty = DependencyProperty.Register(
+        nameof(IsLowPerformanceMode),
+        typeof(bool),
+        typeof(AudioMeterControl),
+        new PropertyMetadata(false, OnIsLowPerformanceModeChanged));
+
     private readonly double[] _barBias =
     [
-        0.22,
-        0.37,
-        0.52,
-        0.76,
+        0.14,
+        0.23,
+        0.35,
+        0.54,
+        0.73,
+        0.46,
+        0.84,
+        0.97,
         0.58,
         0.88,
         0.49,
-        0.69,
-        0.43,
-        0.27,
+        0.74,
+        0.38,
+        0.66,
     ];
 
     private bool _hasAnimatedIn;
-    private double _barPhase;
+    private bool _isRendering;
+    private long _lastRenderTimestamp;
+    private double _targetPeak;
+    private double _displayPeak;
+    private double _peakPulse;
+    private double _lastSamplePeak;
     private ScaleTransform[]? _meterTransforms;
 
     public AudioMeterControl()
     {
         InitializeComponent();
+        Unloaded += OnUnloaded;
     }
 
     public double PeakValue
@@ -54,11 +76,17 @@ public partial class AudioMeterControl : UserControl
         set => SetValue(CardOpacityProperty, value);
     }
 
+    public bool IsLowPerformanceMode
+    {
+        get => (bool)GetValue(IsLowPerformanceModeProperty);
+        set => SetValue(IsLowPerformanceModeProperty, value);
+    }
+
     private static void OnPeakValueChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is AudioMeterControl control)
         {
-            control.AnimateMeter((double)e.NewValue);
+            control.UpdatePeakSignal((double)e.NewValue);
         }
     }
 
@@ -70,59 +98,102 @@ public partial class AudioMeterControl : UserControl
         }
     }
 
+    private static void OnIsLowPerformanceModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is AudioMeterControl control)
+        {
+            control.ApplyPerformanceModeVisuals();
+        }
+    }
+
     private void RootGrid_OnLoaded(object sender, RoutedEventArgs e)
     {
         EnsureMeterTransforms();
-        ApplyRoundedCardClip();
 
-        if (_hasAnimatedIn)
+        _hasAnimatedIn = true;
+        _targetPeak = Math.Clamp(PeakValue, 0.0, 1.0);
+        _displayPeak = _targetPeak;
+        _lastSamplePeak = _targetPeak;
+        RenderMeter();
+        ApplyPerformanceModeVisuals();
+
+        if (!IsLowPerformanceMode && _targetPeak > StopThreshold)
         {
-            AnimateOpacity(CardOpacity);
-            AnimateMeter(PeakValue);
+            EnsureRendering();
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        StopRendering();
+    }
+
+    private void UpdatePeakSignal(double targetPeak)
+    {
+        var clampedPeak = Math.Clamp(targetPeak, 0.0, 1.0);
+        var rise = Math.Max(0.0, clampedPeak - _lastSamplePeak);
+        if (rise > 0.015)
+        {
+            var transient = Math.Clamp((rise * 2.8) + (clampedPeak * 0.32), 0.0, 1.0);
+            _peakPulse = Math.Max(_peakPulse, transient);
+        }
+
+        _lastSamplePeak = clampedPeak;
+        _targetPeak = clampedPeak;
+
+        if (!_hasAnimatedIn)
+        {
             return;
         }
 
-        _hasAnimatedIn = true;
-
-        var fadeAnimation = new DoubleAnimation
+        if (IsLowPerformanceMode)
         {
-            From = 0.0,
-            To = CardOpacity,
-            Duration = TimeSpan.FromMilliseconds(180),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-        };
+            StopRendering();
+            return;
+        }
 
-        var moveAnimation = new DoubleAnimation
+        if (_targetPeak <= StopThreshold && _displayPeak <= StopThreshold && _peakPulse <= StopThreshold)
         {
-            From = 10.0,
-            To = 0.0,
-            Duration = TimeSpan.FromMilliseconds(180),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-        };
+            RenderMeter();
+            return;
+        }
 
-        CardBorder.BeginAnimation(OpacityProperty, fadeAnimation);
-        CardTranslateTransform.BeginAnimation(TranslateTransform.YProperty, moveAnimation);
-        AnimateMeter(PeakValue);
+        EnsureRendering();
     }
 
-    private void RootGrid_OnSizeChanged(object sender, SizeChangedEventArgs e)
+    private void OnRendering(object? sender, EventArgs e)
     {
-        ApplyRoundedCardClip();
+        var now = Stopwatch.GetTimestamp();
+        var frameSeconds = _lastRenderTimestamp == 0
+            ? 1.0 / 60.0
+            : Math.Clamp((now - _lastRenderTimestamp) / (double)Stopwatch.Frequency, 1.0 / 240.0, 1.0 / 20.0);
+
+        _lastRenderTimestamp = now;
+
+        AdvanceEnvelope(frameSeconds);
+        RenderMeter();
+
+        if (_targetPeak <= StopThreshold && _displayPeak <= StopThreshold && _peakPulse <= StopThreshold)
+        {
+            StopRendering();
+        }
     }
 
-    private void RootGrid_OnMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    private void AdvanceEnvelope(double frameSeconds)
     {
-        HoverOverlay.BeginAnimation(OpacityProperty, CreateAnimation(HoverOverlay.Opacity, 1.0, 120));
-        CardTranslateTransform.BeginAnimation(TranslateTransform.YProperty, CreateAnimation(CardTranslateTransform.Y, -2.0, 120));
+        if (_displayPeak < _targetPeak)
+        {
+            _displayPeak = MoveTowards(_displayPeak, _targetPeak, PeakAttackPerSecond * frameSeconds);
+        }
+        else
+        {
+            _displayPeak = MoveTowards(_displayPeak, _targetPeak, PeakReleasePerSecond * frameSeconds);
+        }
+
+        _peakPulse = MoveTowards(_peakPulse, 0.0, PulseReleasePerSecond * frameSeconds);
     }
 
-    private void RootGrid_OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        HoverOverlay.BeginAnimation(OpacityProperty, CreateAnimation(HoverOverlay.Opacity, 0.0, 120));
-        CardTranslateTransform.BeginAnimation(TranslateTransform.YProperty, CreateAnimation(CardTranslateTransform.Y, 0.0, 120));
-    }
-
-    private void AnimateMeter(double targetPeak)
+    private void RenderMeter()
     {
         EnsureMeterTransforms();
         if (_meterTransforms is null)
@@ -130,23 +201,21 @@ public partial class AudioMeterControl : UserControl
             return;
         }
 
-        var clampedPeak = Math.Clamp(targetPeak, 0.0, 1.0);
-        _barPhase += 0.62;
-
         for (var index = 0; index < _meterTransforms.Length; index++)
         {
-            var wave = (Math.Sin(_barPhase + (index * 0.77)) + 1.0) * 0.11;
-            var targetScale = Math.Clamp((clampedPeak * 1.1) + _barBias[index] - 0.45 + wave, 0.12, 1.0);
+            var position = index / Math.Max(1.0, _meterTransforms.Length - 1.0);
+            var centerWeight = 1.0 - (Math.Abs(position - 0.5) * 2.0);
+            var baseFloor = 0.04 + (_barBias[index] * 0.015);
+            var envelopeWeight = 0.46 + (_barBias[index] * 0.34) + (centerWeight * 0.18);
+            var transientWeight = 0.12 + (_barBias[index] * 0.10) + (centerWeight * 0.28);
+            var targetScale = baseFloor + (_displayPeak * envelopeWeight) + (_peakPulse * transientWeight);
 
-            _meterTransforms[index].BeginAnimation(
-                ScaleTransform.ScaleYProperty,
-                new DoubleAnimation
-                {
-                    To = targetScale,
-                    Duration = TimeSpan.FromMilliseconds(90),
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-                },
-                HandoffBehavior.SnapshotAndReplace);
+            if (_displayPeak <= StopThreshold && _peakPulse <= StopThreshold)
+            {
+                targetScale = baseFloor;
+            }
+
+            _meterTransforms[index].ScaleY = Math.Clamp(targetScale, baseFloor, 1.0);
         }
     }
 
@@ -157,7 +226,8 @@ public partial class AudioMeterControl : UserControl
             return;
         }
 
-        CardBorder.BeginAnimation(OpacityProperty, CreateAnimation(CardBorder.Opacity, targetOpacity, 120));
+        CardBorder.BeginAnimation(UIElement.OpacityProperty, null);
+        CardBorder.Opacity = IsLowPerformanceMode ? 1.0 : targetOpacity;
     }
 
     private void EnsureMeterTransforms()
@@ -179,33 +249,177 @@ public partial class AudioMeterControl : UserControl
             BarScale08,
             BarScale09,
             BarScale10,
+            BarScale11,
+            BarScale12,
+            BarScale13,
+            BarScale14,
         ];
     }
 
-    private static DoubleAnimation CreateAnimation(double from, double to, int durationMilliseconds)
+    private void EnsureRendering()
     {
-        return new DoubleAnimation
-        {
-            From = from,
-            To = to,
-            Duration = TimeSpan.FromMilliseconds(durationMilliseconds),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-        };
-    }
-
-    private void ApplyRoundedCardClip()
-    {
-        if (CardBorder.ActualWidth <= 0 || CardBorder.ActualHeight <= 0)
+        if (_isRendering)
         {
             return;
         }
 
-        var clip = new RectangleGeometry(new Rect(0, 0, CardBorder.ActualWidth, CardBorder.ActualHeight), 20, 20);
-        if (clip.CanFreeze)
+        _isRendering = true;
+        _lastRenderTimestamp = 0;
+        CompositionTarget.Rendering += OnRendering;
+    }
+
+    private void StopRendering()
+    {
+        if (!_isRendering)
         {
-            clip.Freeze();
+            return;
         }
 
-        CardBorder.Clip = clip;
+        _isRendering = false;
+        _lastRenderTimestamp = 0;
+        CompositionTarget.Rendering -= OnRendering;
+    }
+
+    private static double MoveTowards(double current, double target, double amount)
+    {
+        if (current < target)
+        {
+            return Math.Min(target, current + amount);
+        }
+
+        return Math.Max(target, current - amount);
+    }
+
+    private void ApplyPerformanceModeVisuals()
+    {
+        ResetCardHoverVisuals();
+
+        if (!_hasAnimatedIn)
+        {
+            return;
+        }
+
+        CardBorder.BeginAnimation(UIElement.OpacityProperty, null);
+        CardBorder.Opacity = IsLowPerformanceMode ? 1.0 : CardOpacity;
+
+        if (IsLowPerformanceMode)
+        {
+            StopRendering();
+            return;
+        }
+
+        RenderMeter();
+
+        if (_targetPeak > StopThreshold || _displayPeak > StopThreshold || _peakPulse > StopThreshold)
+        {
+            EnsureRendering();
+        }
+    }
+
+    private void CardBorder_OnMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (IsLowPerformanceMode)
+        {
+            ResetCardHoverVisuals();
+            return;
+        }
+
+        AnimateCardHoverState(-1.0, 0.08, 0.4, 160);
+    }
+
+    private void CardBorder_OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        ResetCardHoverVisuals(200);
+    }
+
+    private void ResetCardHoverVisuals(int durationMilliseconds = 0)
+    {
+        AnimateCardHoverState(0.0, 0.0, 0.0, durationMilliseconds);
+    }
+
+    private void AnimateCardHoverState(double translateY, double sheenOpacity, double strokeOpacity, int durationMilliseconds)
+    {
+        AnimateDouble(CardTranslateTransform, TranslateTransform.YProperty, translateY, durationMilliseconds);
+        AnimateDouble(CardSheen, UIElement.OpacityProperty, sheenOpacity, durationMilliseconds);
+        AnimateDouble(CardHoverStroke, UIElement.OpacityProperty, strokeOpacity, durationMilliseconds);
+    }
+
+    private static void AnimateDouble(DependencyObject target, DependencyProperty property, double value, int durationMilliseconds)
+    {
+        if (durationMilliseconds <= 0)
+        {
+            if (target is IAnimatable animatable)
+            {
+                animatable.BeginAnimation(property, null);
+            }
+
+            target.SetValue(property, value);
+            return;
+        }
+
+        if (target is not IAnimatable animationTarget)
+        {
+            target.SetValue(property, value);
+            return;
+        }
+
+        animationTarget.BeginAnimation(
+            property,
+            new DoubleAnimation
+            {
+                To = value,
+                Duration = TimeSpan.FromMilliseconds(durationMilliseconds),
+            });
+    }
+
+    private void VolumeSlider_OnPreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (sender is not Slider slider || !slider.IsEnabled)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        ForwardMouseWheelToScrollHost(slider, e);
+    }
+
+    private static void ForwardMouseWheelToScrollHost(DependencyObject source, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        var scrollHost = FindAncestor<ScrollViewer>(source);
+        if (scrollHost is null)
+        {
+            return;
+        }
+
+        var forwardedEvent = new System.Windows.Input.MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = UIElement.MouseWheelEvent,
+            Source = source,
+        };
+
+        scrollHost.RaiseEvent(forwardedEvent);
+    }
+
+    private static T? FindAncestor<T>(DependencyObject source) where T : DependencyObject
+    {
+        for (DependencyObject? current = GetParent(source); current is not null; current = GetParent(current))
+        {
+            if (current is T typedCurrent)
+            {
+                return typedCurrent;
+            }
+        }
+
+        return null;
+    }
+
+    private static DependencyObject? GetParent(DependencyObject child)
+    {
+        if (child is FrameworkContentElement contentElement)
+        {
+            return contentElement.Parent ?? contentElement.TemplatedParent;
+        }
+
+        return VisualTreeHelper.GetParent(child);
     }
 }

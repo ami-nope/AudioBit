@@ -6,7 +6,8 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using AudioBit.App.Infrastructure;
 using AudioBit.App.ViewModels;
 
@@ -18,22 +19,34 @@ public partial class MainWindow : Window
 
     private readonly MainViewModel _viewModel;
     private readonly AudioBitNotifyIconService _notifyIconService;
+    private readonly GlobalHotKeyService _globalHotKeyService;
+    private readonly ContextMenu _trayContextMenu;
+    private readonly MouseWheelEventHandler _closeComboBoxesOnMouseWheelHandler;
+    private readonly ScrollChangedEventHandler _closeComboBoxesOnScrollChangedHandler;
 
     private bool _hasStarted;
+    private bool _exitRequested;
 
-    public MainWindow(MainViewModel viewModel)
+    internal MainWindow(MainViewModel viewModel)
     {
         _viewModel = viewModel;
 
         InitializeComponent();
 
         DataContext = _viewModel;
-        Icon = CreateWindowIcon();
+        Icon = AudioBitIconLoader.WindowIcon;
 
-        _notifyIconService = CreateNotifyIconService();
+        _trayContextMenu = BuildTrayMenu();
+        _notifyIconService = CreateNotifyIconService(_trayContextMenu);
+        _globalHotKeyService = new GlobalHotKeyService();
+        _closeComboBoxesOnMouseWheelHandler = CloseOpenComboBoxesOnPreviewMouseWheel;
+        _closeComboBoxesOnScrollChangedHandler = CloseOpenComboBoxesOnScrollChanged;
         _viewModel.PropertyChanged += ViewModelOnPropertyChanged;
+        _globalHotKeyService.Pressed += GlobalHotKeyServiceOnPressed;
 
         ApplyThemePalette(_viewModel.IsDarkTheme);
+        ApplyTrayMenuTheme();
+        ApplyLowPerformanceVisualState();
 
         SourceInitialized += MainWindowOnSourceInitialized;
         Loaded += MainWindowOnLoaded;
@@ -41,6 +54,9 @@ public partial class MainWindow : Window
         StateChanged += MainWindowOnStateChanged;
         Closing += MainWindowOnClosing;
         Closed += MainWindowOnClosed;
+        PreviewKeyDown += MainWindowOnPreviewKeyDown;
+        AddHandler(UIElement.PreviewMouseWheelEvent, _closeComboBoxesOnMouseWheelHandler, true);
+        AddHandler(ScrollViewer.ScrollChangedEvent, _closeComboBoxesOnScrollChangedHandler, true);
     }
 
     [DllImport("gdi32.dll", SetLastError = true)]
@@ -63,6 +79,8 @@ public partial class MainWindow : Window
     {
         ApplyRoundedWindowRegion();
         ApplyRoundedVisualClips();
+        _globalHotKeyService.Attach(this);
+        RefreshHotKeyRegistration();
     }
 
     private void MainWindowOnLoaded(object sender, RoutedEventArgs e)
@@ -77,6 +95,11 @@ public partial class MainWindow : Window
         _viewModel.Start();
         ApplyRoundedWindowRegion();
         ApplyRoundedVisualClips();
+
+        if (_viewModel.ConsumeStartMinimized())
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(HideToTray));
+        }
     }
 
     private void MainWindowOnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -103,7 +126,15 @@ public partial class MainWindow : Window
 
     private void MainWindowOnClosing(object? sender, CancelEventArgs e)
     {
+        if (!_exitRequested && _viewModel.ShouldHideOnClose)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
         _viewModel.Stop();
+        _globalHotKeyService.Unregister();
 
         if (_notifyIconService.IsRegistered)
         {
@@ -115,17 +146,50 @@ public partial class MainWindow : Window
     {
         _viewModel.PropertyChanged -= ViewModelOnPropertyChanged;
         _notifyIconService.LeftDoubleClickReceived -= NotifyIconServiceOnLeftDoubleClickReceived;
+        _globalHotKeyService.Pressed -= GlobalHotKeyServiceOnPressed;
+        _globalHotKeyService.Dispose();
+        PreviewKeyDown -= MainWindowOnPreviewKeyDown;
+        RemoveHandler(UIElement.PreviewMouseWheelEvent, _closeComboBoxesOnMouseWheelHandler);
+        RemoveHandler(ScrollViewer.ScrollChangedEvent, _closeComboBoxesOnScrollChangedHandler);
     }
 
     private void Header_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.LeftButton == MouseButtonState.Pressed)
-        {
-            DragMove();
-        }
+        TryBeginWindowDrag(e);
     }
 
-    private void OverflowButton_OnClick(object sender, RoutedEventArgs e)
+    private void TopBar_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source
+            || HasAncestor<ButtonBase>(source)
+            || HasAncestor<ScrollBar>(source)
+            || HasAncestor<Selector>(source)
+            || HasAncestor<TextBoxBase>(source))
+        {
+            return;
+        }
+
+        TryBeginWindowDrag(e);
+    }
+
+    private void ShellBackground_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        TryBeginWindowDrag(e);
+    }
+
+    private void MixerListBox_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source
+            || HasAncestor<ListBoxItem>(source)
+            || HasAncestor<ScrollBar>(source))
+        {
+            return;
+        }
+
+        TryBeginWindowDrag(e);
+    }
+
+    private void ContextMenuButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || button.ContextMenu is null)
         {
@@ -133,16 +197,16 @@ public partial class MainWindow : Window
         }
 
         button.ContextMenu.PlacementTarget = button;
-        button.ContextMenu.Placement = PlacementMode.Bottom;
+        button.ContextMenu.Placement = PlacementMode.Top;
         button.ContextMenu.IsOpen = true;
     }
 
-    private void OverflowMinimizeItem_OnClick(object sender, RoutedEventArgs e)
+    private void MinimizeWindow_OnClick(object sender, RoutedEventArgs e)
     {
         WindowState = WindowState.Minimized;
     }
 
-    private void OverflowCloseItem_OnClick(object sender, RoutedEventArgs e)
+    private void CloseWindow_OnClick(object sender, RoutedEventArgs e)
     {
         Close();
     }
@@ -151,6 +215,7 @@ public partial class MainWindow : Window
     {
         ShowInTaskbar = false;
         Hide();
+        _viewModel.OnHiddenToTray();
 
         if (!_notifyIconService.IsRegistered)
         {
@@ -170,11 +235,61 @@ public partial class MainWindow : Window
         WindowState = WindowState.Normal;
         Activate();
         ApplyRoundedWindowRegion();
+        _viewModel.OnRestoredFromTray();
     }
 
     private void ExitFromTray()
     {
+        _exitRequested = true;
         Close();
+    }
+
+    private void MainWindowOnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_viewModel.TryHandleMicMuteHotKeyCapture(e))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void TryBeginWindowDrag(MouseButtonEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // Ignore drag requests from transient mouse states.
+        }
+    }
+
+    private static bool HasAncestor<T>(DependencyObject source) where T : DependencyObject
+    {
+        for (DependencyObject? current = source; current is not null; current = GetParent(current))
+        {
+            if (current is T)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static DependencyObject? GetParent(DependencyObject child)
+    {
+        if (child is FrameworkContentElement contentElement)
+        {
+            return contentElement.Parent ?? contentElement.TemplatedParent;
+        }
+
+        return VisualTreeHelper.GetParent(child);
     }
 
     private void ViewModelOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -182,6 +297,72 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainViewModel.IsDarkTheme))
         {
             ApplyThemePalette(_viewModel.IsDarkTheme);
+            ApplyTrayMenuTheme();
+            return;
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.IsLowPerformanceMode))
+        {
+            ApplyLowPerformanceVisualState();
+            return;
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.MicMuteHotKey))
+        {
+            RefreshHotKeyRegistration();
+        }
+    }
+
+    private void RefreshHotKeyRegistration()
+    {
+        _globalHotKeyService.Register(_viewModel.MicMuteHotKey);
+    }
+
+    private void GlobalHotKeyServiceOnPressed(object? sender, EventArgs e)
+    {
+        _viewModel.HandleGlobalMicMuteHotKey();
+    }
+
+    private void VolumeSlider_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not Slider slider || !slider.IsEnabled)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        ForwardMouseWheelToScrollHost(slider, e);
+    }
+
+    private void CloseOpenComboBoxesOnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Delta == 0)
+        {
+            return;
+        }
+
+        CloseOpenComboBoxes();
+    }
+
+    private void CloseOpenComboBoxesOnScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (Math.Abs(e.VerticalChange) <= double.Epsilon
+            && Math.Abs(e.HorizontalChange) <= double.Epsilon)
+        {
+            return;
+        }
+
+        CloseOpenComboBoxes();
+    }
+
+    private void CloseOpenComboBoxes()
+    {
+        foreach (var comboBox in EnumerateVisualDescendants<ComboBox>(this))
+        {
+            if (comboBox.IsDropDownOpen)
+            {
+                comboBox.IsDropDownOpen = false;
+            }
         }
     }
 
@@ -191,15 +372,10 @@ public partial class MainWindow : Window
         {
             SetBrush("WindowBackdropBrush", Solid("#0D0F16"));
             SetBrush("ShellBackgroundBrush", Gradient("#2B2B39", "#191A24"));
-            SetBrush("ShellBorderBrush", Solid("#4A4B5D"));
-            SetBrush("ShellSheenBrush", Gradient("#22FFFFFF", "#00FFFFFF"));
             SetBrush("TopBarBackgroundBrush", Gradient("#343545", "#2A2B38"));
-            SetBrush("TopBarBorderBrush", Solid("#45475A"));
             SetBrush("BrandTileBrush", Gradient("#FF9B3E", "#F36D1E"));
             SetBrush("BrandTileBorderBrush", Solid("#FFB676"));
             SetBrush("BrandGlyphBrush", Solid("#FFF7F1"));
-            SetBrush("UtilityGroupBrush", Gradient("#3C3C4E", "#323344"));
-            SetBrush("UtilityGroupBorderBrush", Solid("#4D4E62"));
             SetBrush("UtilityButtonBrush", Solid("#343546"));
             SetBrush("UtilityButtonHoverBrush", Solid("#404154"));
             SetBrush("UtilityButtonBorderBrush", Solid("#4A4C60"));
@@ -211,7 +387,6 @@ public partial class MainWindow : Window
             SetBrush("AccentGreenBrush", Solid("#49BF69"));
             SetBrush("CardBackgroundBrush", Gradient("#2A2A38", "#242532"));
             SetBrush("CardBorderBrush", Solid("#434557"));
-            SetBrush("CardHoverOverlayBrush", Solid("#14FFFFFF"));
             SetBrush("IconTileBrush", Solid("#373848"));
             SetBrush("IconTileBorderBrush", Solid("#4A4C60"));
             SetBrush("SliderInactiveBrush", Solid("#181924"));
@@ -250,15 +425,10 @@ public partial class MainWindow : Window
 
         SetBrush("WindowBackdropBrush", Solid("#F0EEF2"));
         SetBrush("ShellBackgroundBrush", Gradient("#FFFFFF", "#EBE8EE"));
-        SetBrush("ShellBorderBrush", Solid("#D3D0D8"));
-        SetBrush("ShellSheenBrush", Gradient("#55FFFFFF", "#00FFFFFF"));
         SetBrush("TopBarBackgroundBrush", Gradient("#FFFFFF", "#F4F1F5"));
-        SetBrush("TopBarBorderBrush", Solid("#E2DEE7"));
         SetBrush("BrandTileBrush", Gradient("#FF9B3E", "#F36D1E"));
         SetBrush("BrandTileBorderBrush", Solid("#F3B784"));
         SetBrush("BrandGlyphBrush", Solid("#FFF8F4"));
-        SetBrush("UtilityGroupBrush", Gradient("#F8F6FA", "#F2EFF4"));
-        SetBrush("UtilityGroupBorderBrush", Solid("#DED9E2"));
         SetBrush("UtilityButtonBrush", Solid("#FBF9FC"));
         SetBrush("UtilityButtonHoverBrush", Solid("#EFEAF2"));
         SetBrush("UtilityButtonBorderBrush", Solid("#DDD8E2"));
@@ -270,7 +440,6 @@ public partial class MainWindow : Window
         SetBrush("AccentGreenBrush", Solid("#46B86A"));
         SetBrush("CardBackgroundBrush", Gradient("#FFFFFF", "#F8F6FA"));
         SetBrush("CardBorderBrush", Solid("#DDD9E1"));
-        SetBrush("CardHoverOverlayBrush", Solid("#10FFFFFF"));
         SetBrush("IconTileBrush", Solid("#F4F1F6"));
         SetBrush("IconTileBorderBrush", Solid("#DDD9E1"));
         SetBrush("SliderInactiveBrush", Solid("#D6D2DB"));
@@ -306,6 +475,70 @@ public partial class MainWindow : Window
         SetBrush("ScrollThumbHoverBrush", Solid("#B3ADB8"));
     }
 
+    private void MasterCardHost_OnMouseEnter(object sender, MouseEventArgs e)
+    {
+        if (_viewModel.IsLowPerformanceMode)
+        {
+            ResetMasterCardVisuals();
+            return;
+        }
+
+        AnimateMasterCardVisuals(-2.0, 1.0, 0.72, 180);
+    }
+
+    private void MasterCardHost_OnMouseLeave(object sender, MouseEventArgs e)
+    {
+        ResetMasterCardVisuals(220);
+    }
+
+    private void ApplyLowPerformanceVisualState()
+    {
+        if (_viewModel.IsLowPerformanceMode)
+        {
+            ResetMasterCardVisuals();
+        }
+    }
+
+    private static void AnimateDouble(DependencyObject target, DependencyProperty property, double value, int durationMilliseconds)
+    {
+        if (durationMilliseconds <= 0)
+        {
+            if (target is IAnimatable animatable)
+            {
+                animatable.BeginAnimation(property, null);
+            }
+
+            target.SetValue(property, value);
+            return;
+        }
+
+        if (target is not IAnimatable animationTarget)
+        {
+            target.SetValue(property, value);
+            return;
+        }
+
+        animationTarget.BeginAnimation(
+            property,
+            new DoubleAnimation
+            {
+                To = value,
+                Duration = TimeSpan.FromMilliseconds(durationMilliseconds),
+            });
+    }
+
+    private void ResetMasterCardVisuals(int durationMilliseconds = 0)
+    {
+        AnimateMasterCardVisuals(0.0, 0.0, 0.0, durationMilliseconds);
+    }
+
+    private void AnimateMasterCardVisuals(double translateY, double sheenOpacity, double strokeOpacity, int durationMilliseconds)
+    {
+        AnimateDouble(MasterCardLiftTransform, TranslateTransform.YProperty, translateY, durationMilliseconds);
+        AnimateDouble(MasterCardSheen, OpacityProperty, sheenOpacity, durationMilliseconds);
+        AnimateDouble(MasterCardHoverStroke, OpacityProperty, strokeOpacity, durationMilliseconds);
+    }
+
     private void SetBrush(string key, Brush brush)
     {
         if (brush.CanFreeze)
@@ -321,13 +554,13 @@ public partial class MainWindow : Window
         RestoreFromTray();
     }
 
-    private AudioBitNotifyIconService CreateNotifyIconService()
+    private AudioBitNotifyIconService CreateNotifyIconService(ContextMenu trayContextMenu)
     {
         var service = new AudioBitNotifyIconService
         {
             TooltipText = "AudioBit",
-            Icon = CreateTrayIcon(),
-            ContextMenu = BuildTrayMenu(),
+            Icon = AudioBitIconLoader.TrayIcon,
+            ContextMenu = trayContextMenu,
         };
 
         service.LeftDoubleClickReceived += NotifyIconServiceOnLeftDoubleClickReceived;
@@ -352,7 +585,56 @@ public partial class MainWindow : Window
         contextMenu.Items.Add(new Separator());
         contextMenu.Items.Add(exitItem);
 
+        ApplyMenuTheme(contextMenu);
         return contextMenu;
+    }
+
+    private void ApplyTrayMenuTheme()
+    {
+        _trayContextMenu.Resources.Clear();
+
+        foreach (var key in Resources.Keys)
+        {
+            _trayContextMenu.Resources[key] = Resources[key];
+        }
+
+        ApplyMenuTheme(_trayContextMenu);
+    }
+
+    private void ApplyMenuTheme(ContextMenu contextMenu)
+    {
+        if (TryFindResource("OverflowContextMenuStyle") is Style contextMenuStyle)
+        {
+            contextMenu.Style = contextMenuStyle;
+        }
+
+        foreach (var item in contextMenu.Items)
+        {
+            ApplyMenuTheme(item);
+        }
+    }
+
+    private void ApplyMenuTheme(object item)
+    {
+        switch (item)
+        {
+            case MenuItem menuItem:
+                if (TryFindResource("OverflowMenuItemStyle") is Style menuItemStyle)
+                {
+                    menuItem.Style = menuItemStyle;
+                }
+
+                foreach (var childItem in menuItem.Items)
+                {
+                    ApplyMenuTheme(childItem);
+                }
+
+                break;
+
+            case Separator separator when TryFindResource("OverflowSeparatorStyle") is Style separatorStyle:
+                separator.Style = separatorStyle;
+                break;
+        }
     }
 
     private void ApplyRoundedWindowRegion()
@@ -371,10 +653,10 @@ public partial class MainWindow : Window
         var dpi = VisualTreeHelper.GetDpi(this);
         var width = Math.Max(1, (int)Math.Ceiling(ActualWidth * dpi.DpiScaleX));
         var height = Math.Max(1, (int)Math.Ceiling(ActualHeight * dpi.DpiScaleY));
-        var radiusX = Math.Max(1, (int)Math.Ceiling(WindowCornerRadius * dpi.DpiScaleX));
-        var radiusY = Math.Max(1, (int)Math.Ceiling(WindowCornerRadius * dpi.DpiScaleY));
+        var cornerDiameterX = Math.Max(2, (int)Math.Ceiling(WindowCornerRadius * 2 * dpi.DpiScaleX));
+        var cornerDiameterY = Math.Max(2, (int)Math.Ceiling(WindowCornerRadius * 2 * dpi.DpiScaleY));
 
-        var regionHandle = CreateRoundRectRgn(0, 0, width + 1, height + 1, radiusX, radiusY);
+        var regionHandle = CreateRoundRectRgn(0, 0, width + 1, height + 1, cornerDiameterX, cornerDiameterY);
         if (regionHandle == IntPtr.Zero)
         {
             return;
@@ -389,9 +671,6 @@ public partial class MainWindow : Window
     private void ApplyRoundedVisualClips()
     {
         ApplyRoundedClip(ShellClipHost, 28);
-        ApplyRoundedClip(MasterCardHost, 20);
-        ApplyRoundedClip(DeviceCardHost, 20);
-        ApplyRoundedClip(AgentsOverlayHost, 24);
         ApplyRoundedClip(CalibrateOverlayHost, 24);
         ApplyRoundedClip(SavedOverlayHost, 24);
     }
@@ -429,32 +708,52 @@ public partial class MainWindow : Window
             new Point(1, 1));
     }
 
-    private static BitmapFrame CreateTrayIcon()
+    private static void ForwardMouseWheelToScrollHost(DependencyObject source, MouseWheelEventArgs e)
     {
-        using var icon = System.Drawing.SystemIcons.Application;
+        var scrollHost = FindAncestor<ScrollViewer>(source);
+        if (scrollHost is null)
+        {
+            return;
+        }
 
-        var source = Imaging.CreateBitmapSourceFromHIcon(
-            icon.Handle,
-            Int32Rect.Empty,
-            BitmapSizeOptions.FromWidthAndHeight(32, 32));
+        var forwardedEvent = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = UIElement.MouseWheelEvent,
+            Source = source,
+        };
 
-        source.Freeze();
-
-        var frame = BitmapFrame.Create(source);
-        frame.Freeze();
-        return frame;
+        scrollHost.RaiseEvent(forwardedEvent);
     }
 
-    private static BitmapSource CreateWindowIcon()
+    private static T? FindAncestor<T>(DependencyObject source) where T : DependencyObject
     {
-        using var icon = System.Drawing.SystemIcons.Application;
+        for (DependencyObject? current = GetParent(source); current is not null; current = GetParent(current))
+        {
+            if (current is T typedCurrent)
+            {
+                return typedCurrent;
+            }
+        }
 
-        var source = Imaging.CreateBitmapSourceFromHIcon(
-            icon.Handle,
-            Int32Rect.Empty,
-            BitmapSizeOptions.FromWidthAndHeight(32, 32));
-
-        source.Freeze();
-        return source;
+        return null;
     }
+
+    private static IEnumerable<T> EnumerateVisualDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        var childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < childCount; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T typedChild)
+            {
+                yield return typedChild;
+            }
+
+            foreach (var descendant in EnumerateVisualDescendants<T>(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
 }

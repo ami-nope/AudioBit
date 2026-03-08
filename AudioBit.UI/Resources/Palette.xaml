@@ -1,8 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <SolidColorBrush x:Key="WindowBackdropBrush" Color="#0D0F16" />
-    <SolidColorBrush x:Key="ShellBorderBrush" Color="#4A4B5D" />
-    <SolidColorBrush x:Key="TopBarBorderBrush" Color="#45475A" />
     <SolidColorBrush x:Key="BrandTileBorderBrush" Color="#FFB676" />
     <SolidColorBrush x:Key="BrandGlyphBrush" Color="#FFF7F1" />
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F4F2F8" />
@@ -12,7 +10,6 @@
     <SolidColorBrush x:Key="AccentOrangeBrush" Color="#FF8D33" />
     <SolidColorBrush x:Key="AccentGreenBrush" Color="#49BF69" />
     <SolidColorBrush x:Key="CardBorderBrush" Color="#434557" />
-    <SolidColorBrush x:Key="CardHoverOverlayBrush" Color="#14FFFFFF" />
     <SolidColorBrush x:Key="IconTileBrush" Color="#373848" />
     <SolidColorBrush x:Key="IconTileBorderBrush" Color="#4A4C60" />
     <SolidColorBrush x:Key="SliderInactiveBrush" Color="#181924" />
@@ -47,11 +44,6 @@
         <GradientStop Offset="1" Color="#191A24" />
     </LinearGradientBrush>
 
-    <LinearGradientBrush x:Key="ShellSheenBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Offset="0" Color="#22FFFFFF" />
-        <GradientStop Offset="1" Color="#00FFFFFF" />
-    </LinearGradientBrush>
-
     <LinearGradientBrush x:Key="TopBarBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Offset="0" Color="#343545" />
         <GradientStop Offset="1" Color="#2A2B38" />
@@ -62,12 +54,6 @@
         <GradientStop Offset="1" Color="#F36D1E" />
     </LinearGradientBrush>
 
-    <LinearGradientBrush x:Key="UtilityGroupBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Offset="0" Color="#3C3C4E" />
-        <GradientStop Offset="1" Color="#323344" />
-    </LinearGradientBrush>
-
-    <SolidColorBrush x:Key="UtilityGroupBorderBrush" Color="#4D4E62" />
     <SolidColorBrush x:Key="UtilityButtonBrush" Color="#343546" />
     <SolidColorBrush x:Key="UtilityButtonHoverBrush" Color="#404154" />
     <SolidColorBrush x:Key="UtilityButtonBorderBrush" Color="#4A4C60" />
