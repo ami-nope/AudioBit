@@ -3,6 +3,8 @@ obj/
 .vs/
 .vscode/
 
+artifacts/
+
 *.user
 *.suo
 *.cache
