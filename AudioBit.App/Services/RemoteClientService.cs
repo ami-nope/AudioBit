@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
 using AudioBit.App.Infrastructure;
@@ -29,6 +31,9 @@ internal sealed class RemoteClientService : IDisposable
     {
         PropertyNamingPolicy = null,
     };
+    private static readonly TimeSpan GeoIpLookupTimeout = TimeSpan.FromSeconds(2.5);
+    private static readonly TimeSpan GeoIpRetryDelay = TimeSpan.FromMinutes(10);
+    private static readonly HttpClient GeoIpClient = CreateGeoIpClient();
     private static readonly object LogFileGate = new();
 
     private readonly object _syncRoot = new();
@@ -57,6 +62,9 @@ internal sealed class RemoteClientService : IDisposable
     private DateTime _lastStateSentUtc = DateTime.MinValue;
     private long _revision;
     private Dictionary<string, int> _appLookup = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _geoIpCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Task<string?>> _geoIpLookups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _geoIpLastAttemptUtc = new(StringComparer.OrdinalIgnoreCase);
     private string _connectedDeviceId = string.Empty;
     private string _connectedDeviceName = string.Empty;
     private string _connectedDeviceLocation = string.Empty;
@@ -576,6 +584,7 @@ internal sealed class RemoteClientService : IDisposable
                         status: "Remote device connected",
                         isRemoteConnected: true,
                         deviceMetadata: metadata);
+                    _ = TryEnrichDeviceLocationAsync(metadata);
                 }
                 else
                 {
@@ -687,6 +696,7 @@ internal sealed class RemoteClientService : IDisposable
                     deviceMetadata: metadata,
                     clearConnectedDevice: clearConnectedDevice,
                     connectedDeviceCount: connectedDeviceCount);
+                _ = TryEnrichDeviceLocationAsync(metadata);
                 break;
             }
 
@@ -719,6 +729,7 @@ internal sealed class RemoteClientService : IDisposable
                     deviceMetadata: metadata,
                     existingDeviceCount: existingDeviceCount,
                     connectedDeviceCount: connectedDeviceCount);
+                _ = TryEnrichDeviceLocationAsync(metadata);
                 break;
             }
 
@@ -767,6 +778,7 @@ internal sealed class RemoteClientService : IDisposable
                     UpdateSessionInfo(
                         status: string.Empty,
                         deviceMetadata: metadata);
+                    _ = TryEnrichDeviceLocationAsync(metadata);
                 }
 
                 break;
@@ -1349,6 +1361,17 @@ internal sealed class RemoteClientService : IDisposable
         return builder.ToString();
     }
 
+    private static HttpClient CreateGeoIpClient()
+    {
+        var client = new HttpClient
+        {
+            Timeout = GeoIpLookupTimeout,
+        };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("AudioBit");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        return client;
+    }
+
     private static RemoteStateModel CloneState(RemoteStateModel source)
     {
         return new RemoteStateModel
@@ -1716,6 +1739,260 @@ internal sealed class RemoteClientService : IDisposable
         }
 
         return null;
+    }
+
+    private async Task TryEnrichDeviceLocationAsync(DeviceMetadata metadata)
+    {
+        if (metadata.IsEmpty || !string.IsNullOrWhiteSpace(metadata.DeviceLocation))
+        {
+            return;
+        }
+
+        if (!TryNormalizeIpAddress(metadata.IpAddress, out var address, out var normalizedIp))
+        {
+            return;
+        }
+
+        if (IsPrivateIpAddress(address))
+        {
+            return;
+        }
+
+        try
+        {
+            var location = await GetGeoLocationAsync(normalizedIp).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(location))
+            {
+                return;
+            }
+
+            var currentIp = string.Empty;
+            lock (_syncRoot)
+            {
+                currentIp = _connectedDeviceIpAddress;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentIp)
+                && !IsSameIpAddress(currentIp, normalizedIp))
+            {
+                return;
+            }
+
+            UpdateSessionInfo(
+                status: string.Empty,
+                deviceMetadata: new DeviceMetadata(
+                    string.Empty,
+                    string.Empty,
+                    location,
+                    string.Empty,
+                    normalizedIp,
+                    string.Empty));
+        }
+        catch (Exception ex)
+        {
+            Log($"GeoIP lookup failed for {normalizedIp}: {ex.Message}");
+        }
+    }
+
+    private Task<string?> GetGeoLocationAsync(string ipAddress)
+    {
+        lock (_syncRoot)
+        {
+            if (_geoIpCache.TryGetValue(ipAddress, out var cached))
+            {
+                return Task.FromResult<string?>(cached);
+            }
+
+            if (_geoIpLookups.TryGetValue(ipAddress, out var existing))
+            {
+                return existing;
+            }
+
+            if (_geoIpLastAttemptUtc.TryGetValue(ipAddress, out var lastAttempt)
+                && DateTimeOffset.UtcNow - lastAttempt < GeoIpRetryDelay)
+            {
+                return Task.FromResult<string?>(null);
+            }
+
+            _geoIpLastAttemptUtc[ipAddress] = DateTimeOffset.UtcNow;
+
+            var task = FetchGeoLocationAsync(ipAddress);
+            _geoIpLookups[ipAddress] = task;
+            return task;
+        }
+    }
+
+    private async Task<string?> FetchGeoLocationAsync(string ipAddress)
+    {
+        string? location = null;
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+            cts.CancelAfter(GeoIpLookupTimeout);
+
+            var requestUri = new Uri($"https://ipapi.co/{ipAddress}/json/");
+            using var response = await GeoIpClient.GetAsync(requestUri, cts.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
+            var root = document.RootElement;
+            if (root.TryGetProperty("error", out var errorProperty)
+                && errorProperty.ValueKind == JsonValueKind.True)
+            {
+                return null;
+            }
+
+            var city = ReadString(root, "city");
+            var region = ReadString(root, "region");
+            var country = ReadString(root, "country_name");
+            if (string.IsNullOrWhiteSpace(country))
+            {
+                country = ReadString(root, "country");
+            }
+
+            location = FormatLocation(city, region, country);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log($"GeoIP lookup failed for {ipAddress}: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            lock (_syncRoot)
+            {
+                _geoIpLookups.Remove(ipAddress);
+                if (!string.IsNullOrWhiteSpace(location))
+                {
+                    _geoIpCache[ipAddress] = location;
+                }
+            }
+        }
+
+        return location;
+    }
+
+    private static string FormatLocation(string city, string region, string country)
+    {
+        var parts = new List<string>(3);
+        AddLocationPart(parts, city);
+        AddLocationPart(parts, region);
+        AddLocationPart(parts, country);
+        return parts.Count == 0 ? string.Empty : string.Join(", ", parts);
+    }
+
+    private static void AddLocationPart(List<string> parts, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var trimmed = value.Trim();
+        if (parts.Any(part => string.Equals(part, trimmed, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        parts.Add(trimmed);
+    }
+
+    private static bool IsSameIpAddress(string left, string right)
+    {
+        if (TryNormalizeIpAddress(left, out _, out var leftNormalized)
+            && TryNormalizeIpAddress(right, out _, out var rightNormalized))
+        {
+            return string.Equals(leftNormalized, rightNormalized, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryNormalizeIpAddress(string raw, out IPAddress address, out string normalized)
+    {
+        address = IPAddress.None;
+        normalized = string.Empty;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        var trimmed = raw.Trim();
+        if (IPAddress.TryParse(trimmed, out address))
+        {
+            normalized = address.ToString();
+            return true;
+        }
+
+        if (trimmed.StartsWith("[", StringComparison.Ordinal))
+        {
+            var end = trimmed.IndexOf(']');
+            if (end > 1)
+            {
+                var host = trimmed.Substring(1, end - 1);
+                if (IPAddress.TryParse(host, out address))
+                {
+                    normalized = address.ToString();
+                    return true;
+                }
+            }
+        }
+
+        var lastColon = trimmed.LastIndexOf(':');
+        if (lastColon > 0 && trimmed.IndexOf(':') == lastColon)
+        {
+            var host = trimmed.Substring(0, lastColon);
+            if (IPAddress.TryParse(host, out address))
+            {
+                normalized = address.ToString();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsPrivateIpAddress(IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address))
+        {
+            return true;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            var bytes = address.GetAddressBytes();
+            return bytes[0] == 10
+                || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+                || (bytes[0] == 192 && bytes[1] == 168)
+                || (bytes[0] == 169 && bytes[1] == 254);
+        }
+
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            if (address.IsIPv6LinkLocal || address.IsIPv6SiteLocal)
+            {
+                return true;
+            }
+
+            var bytes = address.GetAddressBytes();
+            return (bytes[0] & 0xFE) == 0xFC;
+        }
+
+        return false;
     }
 
     private static IReadOnlyList<RelayTarget> BuildRelayTargets(
