@@ -2096,7 +2096,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private static string ResolveRemoteDeviceLabel(string? deviceName, string? userAgent)
     {
-        if (!string.IsNullOrWhiteSpace(deviceName))
+        if (!string.IsNullOrWhiteSpace(deviceName) && !IsPlaceholderDeviceName(deviceName))
         {
             return deviceName.Trim();
         }
@@ -2129,6 +2129,53 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         return $"{os} / {browser}";
+    }
+
+    private static bool IsPlaceholderDeviceName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.Length <= 2)
+        {
+            return true;
+        }
+
+        var normalized = NormalizeToken(trimmed);
+        return normalized is "unknown"
+            or "unknowndevice"
+            or "unknownclient"
+            or "unknownbrowser"
+            or "unknownremote"
+            or "na"
+            or "none"
+            or "device"
+            or "mobile"
+            or "browser"
+            or "client"
+            or "audiobit"
+            or "audiobitmobile";
+    }
+
+    private static string NormalizeToken(string value)
+    {
+        var buffer = new char[value.Length];
+        var length = 0;
+        for (var i = 0; i < value.Length; i++)
+        {
+            var ch = value[i];
+            if (!char.IsLetterOrDigit(ch))
+            {
+                continue;
+            }
+
+            buffer[length++] = char.ToLowerInvariant(ch);
+        }
+
+        return length == 0 ? string.Empty : new string(buffer, 0, length);
     }
 
     private static string DetectUserAgentOs(string userAgent)
