@@ -531,14 +531,25 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public string RemoteConnectedSessionDurationText => FormatRemoteConnectedDuration(_remoteConnectedElapsed);
 
-    public string RemoteConnectedDeviceSubtitle =>
-        string.IsNullOrWhiteSpace(_remoteDeviceName)
-            ? "AudioBit Mobile"
-            : _remoteDeviceName;
+    public string RemoteConnectedDeviceSubtitle
+    {
+        get
+        {
+            var label = ResolveRemoteDeviceLabel(_remoteDeviceName, _remoteDeviceUserAgent);
+            return string.IsNullOrWhiteSpace(label) ? "AudioBit Mobile" : label;
+        }
+    }
 
     public string RemoteDeviceIdText => string.IsNullOrWhiteSpace(_remoteDeviceId) ? "Unavailable" : _remoteDeviceId;
 
-    public string RemoteDeviceNameText => string.IsNullOrWhiteSpace(_remoteDeviceName) ? "Unknown device" : _remoteDeviceName;
+    public string RemoteDeviceNameText
+    {
+        get
+        {
+            var label = ResolveRemoteDeviceLabel(_remoteDeviceName, _remoteDeviceUserAgent);
+            return string.IsNullOrWhiteSpace(label) ? "Unknown device" : label;
+        }
+    }
 
     public string RemoteDeviceLocationText => string.IsNullOrWhiteSpace(_remoteDeviceLocation) ? "Unknown" : _remoteDeviceLocation;
 
@@ -1983,9 +1994,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         var status = string.IsNullOrWhiteSpace(info.Status)
             ? (info.IsConnected ? "connected" : "not connected")
             : info.Status.Trim();
-        var device = string.IsNullOrWhiteSpace(info.DeviceName)
-            ? (string.IsNullOrWhiteSpace(info.DeviceId) ? "no device" : info.DeviceId.Trim())
-            : info.DeviceName.Trim();
+        var deviceLabel = ResolveRemoteDeviceLabel(info.DeviceName, info.UserAgent);
+        var device = !string.IsNullOrWhiteSpace(deviceLabel)
+            ? deviceLabel
+            : (string.IsNullOrWhiteSpace(info.DeviceId) ? "no device" : info.DeviceId.Trim());
 
         var key = $"{sessionId}|{status}|{device}|{(info.IsConnected ? 1 : 0)}";
         if (string.Equals(key, _lastRemoteSessionHistoryKey, StringComparison.Ordinal)
@@ -2080,6 +2092,182 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsRemoteSidPanelVisible));
         OnPropertyChanged(nameof(IsRemoteQrPanelActive));
         OnPropertyChanged(nameof(IsRemoteSidPanelActive));
+    }
+
+    private static string ResolveRemoteDeviceLabel(string? deviceName, string? userAgent)
+    {
+        if (!string.IsNullOrWhiteSpace(deviceName))
+        {
+            return deviceName.Trim();
+        }
+
+        return FormatUserAgentDeviceLabel(userAgent);
+    }
+
+    private static string FormatUserAgentDeviceLabel(string? userAgent)
+    {
+        if (string.IsNullOrWhiteSpace(userAgent))
+        {
+            return string.Empty;
+        }
+
+        var os = DetectUserAgentOs(userAgent);
+        var browser = DetectUserAgentBrowser(userAgent);
+        if (string.IsNullOrWhiteSpace(os) && string.IsNullOrWhiteSpace(browser))
+        {
+            return string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(os))
+        {
+            return browser;
+        }
+
+        if (string.IsNullOrWhiteSpace(browser))
+        {
+            return os;
+        }
+
+        return $"{os} / {browser}";
+    }
+
+    private static string DetectUserAgentOs(string userAgent)
+    {
+        if (HasToken(userAgent, "CrOS"))
+        {
+            return "ChromeOS";
+        }
+
+        if (HasToken(userAgent, "iPad"))
+        {
+            return "iPadOS";
+        }
+
+        if (HasToken(userAgent, "iPhone") || HasToken(userAgent, "iPod"))
+        {
+            return "iOS";
+        }
+
+        if (HasToken(userAgent, "Android"))
+        {
+            return "Android";
+        }
+
+        if (HasToken(userAgent, "Windows NT"))
+        {
+            return MapWindowsVersion(userAgent);
+        }
+
+        if (HasToken(userAgent, "Mac OS X")
+            && !HasToken(userAgent, "iPhone")
+            && !HasToken(userAgent, "iPad")
+            && !HasToken(userAgent, "iPod"))
+        {
+            return "macOS";
+        }
+
+        if (HasToken(userAgent, "Linux"))
+        {
+            return "Linux";
+        }
+
+        return string.Empty;
+    }
+
+    private static string MapWindowsVersion(string userAgent)
+    {
+        if (HasToken(userAgent, "Windows NT 10.0"))
+        {
+            return "Windows 10/11";
+        }
+
+        if (HasToken(userAgent, "Windows NT 6.3"))
+        {
+            return "Windows 8.1";
+        }
+
+        if (HasToken(userAgent, "Windows NT 6.2"))
+        {
+            return "Windows 8";
+        }
+
+        if (HasToken(userAgent, "Windows NT 6.1"))
+        {
+            return "Windows 7";
+        }
+
+        if (HasToken(userAgent, "Windows NT 6.0"))
+        {
+            return "Windows Vista";
+        }
+
+        if (HasToken(userAgent, "Windows NT 5.1"))
+        {
+            return "Windows XP";
+        }
+
+        return "Windows";
+    }
+
+    private static string DetectUserAgentBrowser(string userAgent)
+    {
+        if (HasToken(userAgent, "EdgiOS") || HasToken(userAgent, "EdgA") || HasToken(userAgent, "Edg/"))
+        {
+            return "Edge";
+        }
+
+        if (HasToken(userAgent, "OPR/") || HasToken(userAgent, "Opera"))
+        {
+            return "Opera";
+        }
+
+        if (HasToken(userAgent, "SamsungBrowser"))
+        {
+            return "Samsung Internet";
+        }
+
+        if (HasToken(userAgent, "FxiOS") || HasToken(userAgent, "Firefox"))
+        {
+            return "Firefox";
+        }
+
+        if (HasToken(userAgent, "Chromium"))
+        {
+            return "Chromium";
+        }
+
+        if (HasToken(userAgent, "CriOS"))
+        {
+            return "Chrome";
+        }
+
+        if (HasToken(userAgent, "Chrome"))
+        {
+            return "Chrome";
+        }
+
+        if (HasToken(userAgent, "Safari")
+            && !HasToken(userAgent, "Chrome")
+            && !HasToken(userAgent, "Chromium")
+            && !HasToken(userAgent, "CriOS")
+            && !HasToken(userAgent, "Edg")
+            && !HasToken(userAgent, "OPR")
+            && !HasToken(userAgent, "SamsungBrowser"))
+        {
+            return "Safari";
+        }
+
+        if (HasToken(userAgent, "DuckDuckGo"))
+        {
+            return "DuckDuckGo";
+        }
+
+        return string.Empty;
+    }
+
+    private static bool HasToken(string source, string token)
+    {
+        return source.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string FormatRemoteConnectedDuration(TimeSpan duration)
