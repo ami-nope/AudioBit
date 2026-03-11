@@ -26,7 +26,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private const double RemoteMasterVolumeAnimationThreshold = 0.012;
     private const float MasterVolumeDispatchEpsilon = 0.0005f;
     private const int GoodRemoteLatencyThresholdMs = 50;
-    private static readonly TimeSpan RemoteLatencyStaleAfter = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan RemoteLatencyStaleAfter = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ActiveRefreshInterval = TimeSpan.FromMilliseconds(40);
     private static readonly TimeSpan BalancedRefreshInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan LowPerformanceRefreshInterval = TimeSpan.FromMilliseconds(80);

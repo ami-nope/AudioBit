@@ -845,9 +845,19 @@ internal sealed class RemoteClientService : IDisposable
         }
 
         var sessionRequest = GetSessionRequest(forceNewRequest);
-        var created = _relayTargets.Count > 1
-            ? await CreateBestSessionAsync(sessionRequest, cancellationToken).ConfigureAwait(false)
-            : await _sessionManager.CreateSessionAsync(cancellationToken, sessionRequest).ConfigureAwait(false);
+        int? relayProbeLatencyMs = null;
+        RemoteSessionInfo created;
+        if (_relayTargets.Count > 1)
+        {
+            created = await CreateBestSessionAsync(sessionRequest, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var stopwatch = Stopwatch.StartNew();
+            created = await _sessionManager.CreateSessionAsync(cancellationToken, sessionRequest).ConfigureAwait(false);
+            stopwatch.Stop();
+            relayProbeLatencyMs = Math.Max(1, (int)Math.Round(stopwatch.Elapsed.TotalMilliseconds));
+        }
 
         if (!string.IsNullOrWhiteSpace(sessionRequest.SessionId)
             && !string.Equals(sessionRequest.SessionId, created.SessionId, StringComparison.Ordinal))
@@ -870,7 +880,7 @@ internal sealed class RemoteClientService : IDisposable
             {
                 activeTarget = _relayTargets[_activeRelayTargetIndex];
                 _activeRelayRouteLabel = activeTarget.Name;
-                _activeRelayProbeLatencyMs = null;
+                _activeRelayProbeLatencyMs = relayProbeLatencyMs;
             }
 
             created = new RemoteSessionInfo
@@ -893,7 +903,7 @@ internal sealed class RemoteClientService : IDisposable
                 ExistingDeviceCount = created.ExistingDeviceCount,
                 ConnectedDeviceCount = created.ConnectedDeviceCount,
                 RelayRouteLabel = activeTarget.Name,
-                RelayProbeLatencyMs = null,
+                RelayProbeLatencyMs = relayProbeLatencyMs,
             };
         }
 
@@ -1597,6 +1607,28 @@ internal sealed class RemoteClientService : IDisposable
 
     private static int? ReadLatencyMs(JsonElement payload, JsonElement root)
     {
+        static int? ReadLatencyFromTimestamps(JsonElement source)
+        {
+            var measuredAt = ReadLong(source, "measured_at")
+                ?? ReadLong(source, "measuredAt")
+                ?? ReadLong(source, "measured");
+            var ts = ReadLong(source, "ts")
+                ?? ReadLong(source, "sent_at")
+                ?? ReadLong(source, "sentAt");
+            if (!measuredAt.HasValue || !ts.HasValue)
+            {
+                return null;
+            }
+
+            var delta = measuredAt.Value - ts.Value;
+            if (delta < 0)
+            {
+                return null;
+            }
+
+            return delta > int.MaxValue ? int.MaxValue : (int)delta;
+        }
+
         static int? ReadFrom(JsonElement source)
         {
             var direct = ReadFirstInt(
@@ -1618,15 +1650,35 @@ internal sealed class RemoteClientService : IDisposable
 
             if (source.TryGetProperty("latency", out var latencyObject) && latencyObject.ValueKind == JsonValueKind.Object)
             {
-                return ReadFirstInt(latencyObject, "rtt", "rtt_ms", "rttMs", "ms", "value");
+                var nested = ReadFirstInt(latencyObject, "rtt", "rtt_ms", "rttMs", "ms", "value");
+                if (nested.HasValue)
+                {
+                    return nested;
+                }
+
+                var computed = ReadLatencyFromTimestamps(latencyObject);
+                if (computed.HasValue)
+                {
+                    return computed;
+                }
             }
 
             if (source.TryGetProperty("ping", out var pingObject) && pingObject.ValueKind == JsonValueKind.Object)
             {
-                return ReadFirstInt(pingObject, "rtt", "rtt_ms", "rttMs", "ms", "value");
+                var nested = ReadFirstInt(pingObject, "rtt", "rtt_ms", "rttMs", "ms", "value");
+                if (nested.HasValue)
+                {
+                    return nested;
+                }
+
+                var computed = ReadLatencyFromTimestamps(pingObject);
+                if (computed.HasValue)
+                {
+                    return computed;
+                }
             }
 
-            return null;
+            return ReadLatencyFromTimestamps(source);
         }
 
         return ReadFrom(payload) ?? ReadFrom(root);
