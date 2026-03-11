@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using AudioBit.Core;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -8,6 +11,12 @@ namespace AudioBit.App.ViewModels;
 
 public sealed class AppAudioViewModel : ObservableObject
 {
+    private static readonly TimeSpan LocalVolumeSyncHold = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan RemoteVolumeAnimationDuration = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan RemoteVolumeAnimationFrameInterval = TimeSpan.FromMilliseconds(16);
+    private const double RemoteVolumeAnimationThreshold = 0.012;
+    private const float VolumeDispatchEpsilon = 0.0005f;
+
     private static readonly Brush DiscordAccentBrush = CreateSolidBrush("#5865F2");
     private static readonly Brush SpotifyAccentBrush = CreateSolidBrush("#1ED760");
     private static readonly Brush BraveAccentBrush = CreateSolidBrush("#FB542B");
@@ -39,12 +48,21 @@ public sealed class AppAudioViewModel : ObservableObject
     private readonly Action<int, bool> _setMute;
     private readonly Action<int, string?> _setPreferredPlaybackDevice;
     private readonly Action<int, string?> _setPreferredCaptureDevice;
+    private readonly DispatcherTimer _remoteVolumeAnimationTimer;
 
     private bool _isApplyingSnapshot;
+    private bool _isApplyingRemoteVolumeAnimation;
+    private int _isVolumeDispatching;
+    private int _isPlaybackRouteDispatching;
+    private int _isCaptureRouteDispatching;
     private int _processId;
     private string _appName = string.Empty;
     private ImageSource? _icon;
     private double _volume = 1.0;
+    private float _queuedVolume = 1.0f;
+    private string _queuedPlaybackDeviceId = string.Empty;
+    private string _queuedCaptureDeviceId = string.Empty;
+    private DateTime _lastLocalVolumeUpdateUtc = DateTime.MinValue;
     private double _peak;
     private bool _isMuted;
     private DateTime _lastAudioTime = DateTime.UtcNow;
@@ -52,6 +70,9 @@ public sealed class AppAudioViewModel : ObservableObject
     private Brush _accentBrush = FallbackAccentBrushes[0];
     private string _selectedPlaybackDeviceId = string.Empty;
     private string _selectedCaptureDeviceId = string.Empty;
+    private DateTime _remoteVolumeAnimationStartedUtc;
+    private double _remoteVolumeAnimationStart;
+    private double _remoteVolumeAnimationTarget;
 
     public AppAudioViewModel(
         ReadOnlyObservableCollection<AudioDeviceOptionModel> playbackDevices,
@@ -67,6 +88,11 @@ public sealed class AppAudioViewModel : ObservableObject
         _setMute = setMute;
         _setPreferredPlaybackDevice = setPreferredPlaybackDevice;
         _setPreferredCaptureDevice = setPreferredCaptureDevice;
+        _remoteVolumeAnimationTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = RemoteVolumeAnimationFrameInterval,
+        };
+        _remoteVolumeAnimationTimer.Tick += RemoteVolumeAnimationTimerOnTick;
     }
 
     public ReadOnlyObservableCollection<AudioDeviceOptionModel> PlaybackDevices { get; }
@@ -116,12 +142,18 @@ public sealed class AppAudioViewModel : ObservableObject
             OnPropertyChanged(nameof(ShouldShowMeter));
             OnPropertyChanged(nameof(HasRecentActivityText));
 
-            if (_isApplyingSnapshot)
+            if (_isApplyingSnapshot || _isApplyingRemoteVolumeAnimation)
             {
                 return;
             }
 
-            _setVolume(ProcessId, (float)clamped);
+            if (_remoteVolumeAnimationTimer.IsEnabled)
+            {
+                StopRemoteVolumeAnimation();
+            }
+
+            _lastLocalVolumeUpdateUtc = DateTime.UtcNow;
+            QueueVolumeUpdate((float)clamped);
         }
     }
 
@@ -190,7 +222,7 @@ public sealed class AppAudioViewModel : ObservableObject
         get => _selectedPlaybackDeviceId;
         set
         {
-            var normalized = NormalizeSelectionId(value);
+            var normalized = NormalizeSelectionIdToKnownOption(value, PlaybackDevices);
             if (!SetProperty(ref _selectedPlaybackDeviceId, normalized))
             {
                 return;
@@ -201,7 +233,7 @@ public sealed class AppAudioViewModel : ObservableObject
                 return;
             }
 
-            _setPreferredPlaybackDevice(ProcessId, normalized);
+            QueuePlaybackRouteUpdate(normalized);
         }
     }
 
@@ -210,7 +242,7 @@ public sealed class AppAudioViewModel : ObservableObject
         get => _selectedCaptureDeviceId;
         set
         {
-            var normalized = NormalizeSelectionId(value);
+            var normalized = NormalizeSelectionIdToKnownOption(value, CaptureDevices);
             if (!SetProperty(ref _selectedCaptureDeviceId, normalized))
             {
                 return;
@@ -221,7 +253,7 @@ public sealed class AppAudioViewModel : ObservableObject
                 return;
             }
 
-            _setPreferredCaptureDevice(ProcessId, normalized);
+            QueueCaptureRouteUpdate(normalized);
         }
     }
 
@@ -246,7 +278,11 @@ public sealed class AppAudioViewModel : ObservableObject
         ProcessId = model.ProcessId;
         AppName = model.AppName;
         Icon = model.Icon;
-        Volume = model.Volume;
+        if (ShouldApplySnapshotVolume(model.Volume))
+        {
+            ApplySnapshotVolume(model.Volume);
+        }
+
         Peak = model.Peak;
         IsMuted = model.IsMuted;
         LastAudioTime = model.LastAudioTime;
@@ -260,6 +296,227 @@ public sealed class AppAudioViewModel : ObservableObject
         OnPropertyChanged(nameof(ShouldShowMeter));
         OnPropertyChanged(nameof(HasRecentActivityText));
         OnPropertyChanged(nameof(RecentActivityText));
+    }
+
+    private bool ShouldApplySnapshotVolume(double snapshotVolume)
+    {
+        var elapsed = DateTime.UtcNow - _lastLocalVolumeUpdateUtc;
+        if (elapsed >= LocalVolumeSyncHold)
+        {
+            return true;
+        }
+
+        return Math.Abs(_volume - snapshotVolume) <= 0.02;
+    }
+
+    private void ApplySnapshotVolume(double snapshotVolume)
+    {
+        var clamped = Math.Clamp(snapshotVolume, 0.0, 1.0);
+        if (Math.Abs(_volume - clamped) < RemoteVolumeAnimationThreshold)
+        {
+            StopRemoteVolumeAnimation();
+            Volume = clamped;
+            return;
+        }
+
+        _remoteVolumeAnimationStart = _volume;
+        _remoteVolumeAnimationTarget = clamped;
+        _remoteVolumeAnimationStartedUtc = DateTime.UtcNow;
+
+        if (!_remoteVolumeAnimationTimer.IsEnabled)
+        {
+            _remoteVolumeAnimationTimer.Start();
+        }
+    }
+
+    private void RemoteVolumeAnimationTimerOnTick(object? sender, EventArgs e)
+    {
+        var duration = RemoteVolumeAnimationDuration.TotalMilliseconds;
+        if (duration <= 0.0)
+        {
+            CompleteRemoteVolumeAnimation();
+            return;
+        }
+
+        var elapsedMilliseconds = (DateTime.UtcNow - _remoteVolumeAnimationStartedUtc).TotalMilliseconds;
+        var progress = Math.Clamp(elapsedMilliseconds / duration, 0.0, 1.0);
+        var eased = 1.0 - Math.Pow(1.0 - progress, 3.0);
+        var nextVolume = _remoteVolumeAnimationStart + ((_remoteVolumeAnimationTarget - _remoteVolumeAnimationStart) * eased);
+
+        _isApplyingRemoteVolumeAnimation = true;
+        try
+        {
+            Volume = nextVolume;
+        }
+        finally
+        {
+            _isApplyingRemoteVolumeAnimation = false;
+        }
+
+        if (progress >= 1.0 || Math.Abs(_remoteVolumeAnimationTarget - _volume) < 0.0005)
+        {
+            CompleteRemoteVolumeAnimation();
+        }
+    }
+
+    private void CompleteRemoteVolumeAnimation()
+    {
+        _isApplyingRemoteVolumeAnimation = true;
+        try
+        {
+            Volume = _remoteVolumeAnimationTarget;
+        }
+        finally
+        {
+            _isApplyingRemoteVolumeAnimation = false;
+        }
+
+        StopRemoteVolumeAnimation();
+    }
+
+    private void StopRemoteVolumeAnimation()
+    {
+        if (!_remoteVolumeAnimationTimer.IsEnabled)
+        {
+            return;
+        }
+
+        _remoteVolumeAnimationTimer.Stop();
+    }
+
+    private void QueueVolumeUpdate(float volume)
+    {
+        Volatile.Write(ref _queuedVolume, volume);
+        if (Interlocked.CompareExchange(ref _isVolumeDispatching, 1, 0) == 0)
+        {
+            _ = Task.Run(FlushQueuedVolumeUpdates);
+        }
+    }
+
+    private void FlushQueuedVolumeUpdates()
+    {
+        try
+        {
+            while (true)
+            {
+                var processId = ProcessId;
+                if (processId <= 0)
+                {
+                    break;
+                }
+
+                var volumeToApply = Volatile.Read(ref _queuedVolume);
+                _setVolume(processId, volumeToApply);
+
+                var latestRequested = Volatile.Read(ref _queuedVolume);
+                if (Math.Abs(latestRequested - volumeToApply) > VolumeDispatchEpsilon)
+                {
+                    continue;
+                }
+
+                Interlocked.Exchange(ref _isVolumeDispatching, 0);
+                latestRequested = Volatile.Read(ref _queuedVolume);
+                if (Math.Abs(latestRequested - volumeToApply) <= VolumeDispatchEpsilon
+                    || Interlocked.CompareExchange(ref _isVolumeDispatching, 1, 0) != 0)
+                {
+                    break;
+                }
+            }
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _isVolumeDispatching, 0);
+        }
+    }
+
+    private void QueuePlaybackRouteUpdate(string deviceId)
+    {
+        Volatile.Write(ref _queuedPlaybackDeviceId, deviceId);
+        if (Interlocked.CompareExchange(ref _isPlaybackRouteDispatching, 1, 0) == 0)
+        {
+            _ = Task.Run(FlushQueuedPlaybackRouteUpdates);
+        }
+    }
+
+    private void FlushQueuedPlaybackRouteUpdates()
+    {
+        try
+        {
+            while (true)
+            {
+                var processId = ProcessId;
+                if (processId <= 0)
+                {
+                    break;
+                }
+
+                var deviceToApply = Volatile.Read(ref _queuedPlaybackDeviceId);
+                _setPreferredPlaybackDevice(processId, deviceToApply);
+
+                var latestRequested = Volatile.Read(ref _queuedPlaybackDeviceId);
+                if (!string.Equals(latestRequested, deviceToApply, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                Interlocked.Exchange(ref _isPlaybackRouteDispatching, 0);
+                latestRequested = Volatile.Read(ref _queuedPlaybackDeviceId);
+                if (string.Equals(latestRequested, deviceToApply, StringComparison.OrdinalIgnoreCase)
+                    || Interlocked.CompareExchange(ref _isPlaybackRouteDispatching, 1, 0) != 0)
+                {
+                    break;
+                }
+            }
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _isPlaybackRouteDispatching, 0);
+        }
+    }
+
+    private void QueueCaptureRouteUpdate(string deviceId)
+    {
+        Volatile.Write(ref _queuedCaptureDeviceId, deviceId);
+        if (Interlocked.CompareExchange(ref _isCaptureRouteDispatching, 1, 0) == 0)
+        {
+            _ = Task.Run(FlushQueuedCaptureRouteUpdates);
+        }
+    }
+
+    private void FlushQueuedCaptureRouteUpdates()
+    {
+        try
+        {
+            while (true)
+            {
+                var processId = ProcessId;
+                if (processId <= 0)
+                {
+                    break;
+                }
+
+                var deviceToApply = Volatile.Read(ref _queuedCaptureDeviceId);
+                _setPreferredCaptureDevice(processId, deviceToApply);
+
+                var latestRequested = Volatile.Read(ref _queuedCaptureDeviceId);
+                if (!string.Equals(latestRequested, deviceToApply, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                Interlocked.Exchange(ref _isCaptureRouteDispatching, 0);
+                latestRequested = Volatile.Read(ref _queuedCaptureDeviceId);
+                if (string.Equals(latestRequested, deviceToApply, StringComparison.OrdinalIgnoreCase)
+                    || Interlocked.CompareExchange(ref _isCaptureRouteDispatching, 1, 0) != 0)
+                {
+                    break;
+                }
+            }
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _isCaptureRouteDispatching, 0);
+        }
     }
 
     public void SetMutedVisualState(bool isMuted)
@@ -376,6 +633,36 @@ public sealed class AppAudioViewModel : ObservableObject
     private static string NormalizeSelectionId(string? deviceId)
     {
         return string.IsNullOrWhiteSpace(deviceId) ? string.Empty : deviceId;
+    }
+
+    private static string NormalizeSelectionIdToKnownOption(
+        string? deviceId,
+        IEnumerable<AudioDeviceOptionModel> options)
+    {
+        var normalized = NormalizeSelectionId(deviceId);
+        if (normalized.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        foreach (var option in options)
+        {
+            if (string.Equals(option.Id, normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                return option.Id;
+            }
+        }
+
+        foreach (var option in options)
+        {
+            if (normalized.Contains(option.Id, StringComparison.OrdinalIgnoreCase)
+                || option.Id.Contains(normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                return option.Id;
+            }
+        }
+
+        return string.Empty;
     }
 
     private static SolidColorBrush CreateSolidBrush(string hexColor)

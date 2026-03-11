@@ -245,7 +245,7 @@
                 </MultiDataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Profiles" />
+                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Remote" />
                         <Condition Binding="{Binding DataContext.IsProfilesTabSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
                     </MultiDataTrigger.Conditions>
                     <Setter Property="Background" Value="{DynamicResource FooterHoverBrush}" />
@@ -275,7 +275,7 @@
                 </MultiDataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Value="Profiles" />
+                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Value="Remote" />
                         <Condition Binding="{Binding DataContext.IsProfilesTabSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
                     </MultiDataTrigger.Conditions>
                     <Setter Property="Foreground" Value="{DynamicResource FooterActiveBrush}" />
@@ -304,7 +304,7 @@
                 </MultiDataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Value="Profiles" />
+                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Value="Remote" />
                         <Condition Binding="{Binding DataContext.IsProfilesTabSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
                     </MultiDataTrigger.Conditions>
                     <Setter Property="Fill" Value="{DynamicResource FooterActiveBrush}" />
@@ -331,7 +331,7 @@
                 </MultiDataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Value="Profiles" />
+                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Value="Remote" />
                         <Condition Binding="{Binding DataContext.IsProfilesTabSelected, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
                     </MultiDataTrigger.Conditions>
                     <Setter Property="Stroke" Value="{DynamicResource FooterActiveBrush}" />
@@ -1134,6 +1134,7 @@
                         MouseLeftButtonDown="ShellBackground_OnMouseLeftButtonDown" />
 
                 <Grid>
+                    <Grid x:Name="ShellContentRoot">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="88" />
                         <RowDefinition Height="Auto" />
@@ -1543,261 +1544,1306 @@
                         </Grid>
                     </Grid>
 
-                    <ScrollViewer x:Name="ProfilesContentHost"
-                                  Grid.Row="3"
-                                  Grid.RowSpan="2"
-                                  Margin="14,2,14,0"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  PanningMode="VerticalFirst"
-                                  PanningDeceleration="0.001"
-                                  infra:SmoothScrollBehavior.IsEnabled="{Binding EnableEnhancedVisuals}"
-                                  infra:SmoothScrollBehavior.SmoothingDuration="280"
-                                  infra:SmoothScrollBehavior.WheelStep="10"
-                                  Visibility="{Binding IsProfilesTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                  VerticalScrollBarVisibility="Auto">
-                        <ScrollViewer.Resources>
-                            <Style BasedOn="{StaticResource SurfaceScrollBarStyle}" TargetType="{x:Type ScrollBar}" />
-                        </ScrollViewer.Resources>
-
-                        <StackPanel Margin="0,0,0,10">
-                            <TextBlock FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="PROFILES"
-                                       TextTrimming="CharacterEllipsis" />
-
-                            <Border Margin="0,10,0,0"
-                                    Padding="16,14,16,14"
+                    <Grid x:Name="ProfilesContentHost"
+                          Grid.Row="3"
+                          Grid.RowSpan="2"
+                          Margin="14,2,14,0"
+                          Visibility="{Binding IsProfilesTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ScrollViewer x:Name="ProfilesContentScrollHost"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto"
+                                      PanningMode="VerticalFirst"
+                                      PanningDeceleration="0.001"
+                                      infra:SmoothScrollBehavior.IsEnabled="{Binding EnableEnhancedVisuals}"
+                                      infra:SmoothScrollBehavior.SmoothingDuration="250"
+                                      infra:SmoothScrollBehavior.WheelStep="10">
+                            <ScrollViewer.Resources>
+                                <Style BasedOn="{StaticResource SurfaceScrollBarStyle}" TargetType="{x:Type ScrollBar}" />
+                            </ScrollViewer.Resources>
+                            <StackPanel Margin="0,0,0,0">
+                            <Border Margin="0,2,0,0"
+                                    MinHeight="150"
+                                    Padding="12,10,12,10"
                                     Style="{StaticResource SettingsSectionCardStyle}">
+                                <Border.Resources>
+                                    <Style x:Key="RemoteModeTileButtonStyle" TargetType="{x:Type Button}">
+                                        <Setter Property="Background" Value="#2A2E4A" />
+                                        <Setter Property="BorderBrush" Value="#3B4060" />
+                                        <Setter Property="BorderThickness" Value="1" />
+                                        <Setter Property="Foreground" Value="#9EA4CB" />
+                                        <Setter Property="Padding" Value="9,7" />
+                                        <Setter Property="Cursor" Value="Hand" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="{x:Type Button}">
+                                                    <Border x:Name="ModeBorder"
+                                                            Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="14">
+                                                        <ContentPresenter Margin="{TemplateBinding Padding}" />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="ModeBorder" Property="Opacity" Value="0.96" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="ModeBorder" Property="Opacity" Value="0.9" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                    <Style x:Key="RemoteCopyButtonStyle" TargetType="{x:Type Button}">
+                                        <Setter Property="MinWidth" Value="72" />
+                                        <Setter Property="Padding" Value="8,5" />
+                                        <Setter Property="Background" Value="#2E3353" />
+                                        <Setter Property="BorderBrush" Value="#404768" />
+                                        <Setter Property="BorderThickness" Value="1" />
+                                        <Setter Property="Foreground" Value="#B8BEE2" />
+                                        <Setter Property="Cursor" Value="Hand" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="{x:Type Button}">
+                                                    <Border x:Name="CopyBorder"
+                                                            Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="12">
+                                                        <ContentPresenter Margin="{TemplateBinding Padding}" />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="CopyBorder" Property="Opacity" Value="0.94" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="CopyBorder" Property="Opacity" Value="0.88" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Border.Resources>
                                 <StackPanel>
-                                    <TextBlock FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="Current profile" />
-                                    <TextBlock Margin="0,6,0,0"
-                                               FontSize="19"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="{Binding SelectedAgentName}" />
-                                    <TextBlock Margin="0,8,0,0"
-                                               FontSize="11.5"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="{Binding SelectedAgentSummary}"
-                                               TextWrapping="Wrap" />
-
-                                    <Grid Margin="0,14,0,0">
+                                    <StackPanel.LayoutTransform>
+                                        <ScaleTransform ScaleX="1" ScaleY="1" />
+                                    </StackPanel.LayoutTransform>
+                                    <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock FontSize="28"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   Text="RemoteBit" />
+
+                                        <StackPanel Grid.Column="1"
+                                                    Orientation="Horizontal"
+                                                    Visibility="{Binding IsRemoteConnected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <Ellipse Width="7"
+                                                     Height="7"
+                                                     Margin="0,0,6,0"
+                                                     VerticalAlignment="Center"
+                                                     Fill="#22C55E" />
+                                            <TextBlock VerticalAlignment="Center"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#22C55E"
+                                                       Text="Connected" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <StackPanel.Style>
+                                                <Style TargetType="{x:Type StackPanel}">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRemoteConnected}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+                                            <Ellipse Width="7"
+                                                     Height="7"
+                                                     Margin="0,0,6,0"
+                                                     VerticalAlignment="Center"
+                                                     Fill="{DynamicResource AccentOrangeBrush}" />
+                                            <TextBlock VerticalAlignment="Center"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource AccentOrangeBrush}"
+                                                       Text="Pairing..." />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Grid Margin="0,6,0,0"
+                                          Visibility="{Binding IsRemoteModeMenuVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="4" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
 
-                                        <Border Grid.Column="0"
-                                                Padding="12,10"
-                                                Background="{DynamicResource OverlayOptionBrush}"
-                                                BorderBrush="{DynamicResource OverlayOptionBorderBrush}"
+                                        <Button Grid.Column="0"
+                                                Command="{Binding SelectRemotePanelModeCommand}"
+                                                CommandParameter="qr">
+                                            <Button.Style>
+                                                <Style BasedOn="{StaticResource RemoteModeTileButtonStyle}" TargetType="{x:Type Button}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRemoteQrPanelActive}" Value="True">
+                                                            <Setter Property="Background" Value="#2D1A00" />
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentOrangeBrush}" />
+                                                            <Setter Property="BorderThickness" Value="1.5" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource AccentOrangeBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="30"
+                                                        Height="30"
+                                                        CornerRadius="15">
+                                                    <Border.Style>
+                                                        <Style TargetType="{x:Type Border}">
+                                                            <Setter Property="Background" Value="#363B5A" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsRemoteQrPanelActive}" Value="True">
+                                                                    <Setter Property="Background" Value="{DynamicResource AccentOrangeBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <Canvas Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                        <Rectangle Width="5" Height="5" RadiusX="1" RadiusY="1" StrokeThickness="1.2"
+                                                                   Canvas.Left="1" Canvas.Top="1"
+                                                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                        <Rectangle Width="5" Height="5" RadiusX="1" RadiusY="1" StrokeThickness="1.2"
+                                                                   Canvas.Left="12" Canvas.Top="1"
+                                                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                        <Rectangle Width="5" Height="5" RadiusX="1" RadiusY="1" StrokeThickness="1.2"
+                                                                   Canvas.Left="1" Canvas.Top="12"
+                                                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                        <Rectangle Width="5" Height="5" RadiusX="1" RadiusY="1" StrokeThickness="1.2"
+                                                                   Canvas.Left="12" Canvas.Top="12"
+                                                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                    </Canvas>
+                                                </Border>
+                                                <TextBlock Grid.Column="1"
+                                                           Margin="8,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="12.5"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                           Text="Generate QR" />
+                                            </Grid>
+                                        </Button>
+
+                                        <Button Grid.Column="2"
+                                                Command="{Binding SelectRemotePanelModeCommand}"
+                                                CommandParameter="sid">
+                                            <Button.Style>
+                                                <Style BasedOn="{StaticResource RemoteModeTileButtonStyle}" TargetType="{x:Type Button}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRemoteSidPanelActive}" Value="True">
+                                                            <Setter Property="Background" Value="#2B103D" />
+                                                            <Setter Property="BorderBrush" Value="#A855F7" />
+                                                            <Setter Property="BorderThickness" Value="1.5" />
+                                                            <Setter Property="Foreground" Value="#D6A1FF" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="30"
+                                                        Height="30"
+                                                        CornerRadius="15">
+                                                    <Border.Style>
+                                                        <Style TargetType="{x:Type Border}">
+                                                            <Setter Property="Background" Value="#363B5A" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsRemoteSidPanelActive}" Value="True">
+                                                                    <Setter Property="Background" Value="#A855F7" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="15"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                               Text="#" />
+                                                </Border>
+                                                <TextBlock Grid.Column="1"
+                                                           Margin="8,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="12.5"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                           Text="SID &amp; Code" />
+                                            </Grid>
+                                        </Button>
+                                    </Grid>
+
+                                    <StackPanel Margin="0,36,0,0"
+                                                HorizontalAlignment="Center"
+                                                Visibility="{Binding IsRemoteDefaultPanelVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Border Width="72"
+                                                Height="72"
+                                                Background="#252B4A"
+                                                CornerRadius="22">
+                                            <Canvas Width="30" Height="30" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Path Stroke="#4B547E"
+                                                      StrokeThickness="2.2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      Data="M3.6,12.3 C8.5,8.1 21.5,8.1 26.4,12.3" />
+                                                <Path Stroke="#4B547E"
+                                                      StrokeThickness="2.2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      Data="M8.8,17 C12,14.5 18,14.5 21.2,17" />
+                                                <Ellipse Width="3.4" Height="3.4" Canvas.Left="13.3" Canvas.Top="21.4" Fill="#4B547E" />
+                                            </Canvas>
+                                        </Border>
+                                        <TextBlock Margin="0,12,0,0"
+                                                   Width="228"
+                                                   FontSize="12"
+                                                   Foreground="#6974A3"
+                                                   Text="Select a connection method above to pair your device"
+                                                   TextAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <StackPanel Visibility="{Binding IsRemoteSidPanelVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Margin="0,6,0,0">
+                                        <StackPanel Visibility="{Binding IsRemoteSidCredentialsHiddenViewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <Border Padding="14,12,14,12"
+                                                    Background="#262B49"
+                                                    BorderBrush="#394066"
+                                                    BorderThickness="1"
+                                                    CornerRadius="16">
+                                                <StackPanel>
+                                                    <Rectangle Width="74"
+                                                               Height="14"
+                                                               HorizontalAlignment="Left"
+                                                               Fill="#3A4168"
+                                                               RadiusX="4"
+                                                               RadiusY="4" />
+                                                    <Rectangle Margin="0,12,0,0"
+                                                               Width="180"
+                                                               Height="14"
+                                                               HorizontalAlignment="Left"
+                                                               Fill="#31385E"
+                                                               RadiusX="4"
+                                                               RadiusY="4" />
+                                                    <Rectangle Margin="0,10,0,0"
+                                                               Width="74"
+                                                               Height="14"
+                                                               HorizontalAlignment="Left"
+                                                               Fill="#3A4168"
+                                                               RadiusX="4"
+                                                               RadiusY="4" />
+                                                    <StackPanel Margin="0,12,0,0"
+                                                                Orientation="Horizontal">
+                                                        <Ellipse Width="8"
+                                                                 Height="8"
+                                                                 VerticalAlignment="Center"
+                                                                 Fill="#5A6290" />
+                                                        <TextBlock Margin="8,0,0,0"
+                                                                   VerticalAlignment="Center"
+                                                                   FontSize="12.5"
+                                                                   Foreground="#6B73A2"
+                                                                   Text="Credentials hidden for security" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Button Margin="0,8,0,0"
+                                                    Height="40"
+                                                    Command="{Binding RevealRemoteSidCredentialsCommand}">
+                                                <Button.Style>
+                                                    <Style TargetType="{x:Type Button}">
+                                                        <Setter Property="Background" Value="#7F45F4" />
+                                                        <Setter Property="BorderBrush" Value="#A56CFF" />
+                                                        <Setter Property="BorderThickness" Value="0" />
+                                                        <Setter Property="Foreground" Value="White" />
+                                                        <Setter Property="Cursor" Value="Hand" />
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="{x:Type Button}">
+                                                                    <Border x:Name="RevealBorder"
+                                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                                            CornerRadius="16">
+                                                                        <Border.Background>
+                                                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                                                <GradientStop Color="#6D35EB" Offset="0" />
+                                                                                <GradientStop Color="#A35AF2" Offset="1" />
+                                                                            </LinearGradientBrush>
+                                                                        </Border.Background>
+                                                                        <ContentPresenter />
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="RevealBorder" Property="Opacity" Value="0.95" />
+                                                                        </Trigger>
+                                                                        <Trigger Property="IsPressed" Value="True">
+                                                                            <Setter TargetName="RevealBorder" Property="Opacity" Value="0.88" />
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </Button.Style>
+                                                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                                                    <TextBlock VerticalAlignment="Center"
+                                                               FontSize="16"
+                                                               FontWeight="SemiBold"
+                                                               Text="#" />
+                                                    <TextBlock Margin="10,0,0,0"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="13"
+                                                               FontWeight="SemiBold"
+                                                               Text="Reveal SID &amp; Pair-Code" />
+                                                </StackPanel>
+                                            </Button>
+
+                                        </StackPanel>
+
+                                        <StackPanel Visibility="{Binding IsRemoteSidCredentialsViewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Border Padding="14,10,14,10"
+                                                Background="#2A1700"
+                                                BorderBrush="#A35A00"
+                                                BorderThickness="1"
+                                                CornerRadius="14">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock FontSize="13.5"
+                                                           Foreground="#DCA66A"
+                                                           Text="Session Policy" />
+                                                    <TextBlock Grid.Column="1"
+                                                               FontSize="13.5"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                                               Text="No timeout" />
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Margin="0,8,0,0"
+                                                Padding="14,12,14,12"
+                                                Background="#2A2E4A"
+                                                BorderBrush="#373F63"
                                                 BorderThickness="1"
                                                 CornerRadius="16">
                                             <StackPanel>
-                                                <TextBlock FontSize="11"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           Text="Status" />
-                                                <TextBlock Margin="0,6,0,0"
-                                                           FontSize="14"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                                           Text="{Binding SelectedAgentStatus}" />
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock FontSize="13"
+                                                               Foreground="#A6ADD2"
+                                                               Text="Pair Code" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Margin="12,0,0,0"
+                                                                   FontSize="24"
+                                                                   FontFamily="Consolas"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                                   Text="{Binding RemotePairCode}" />
+                                                    <Button Grid.Column="2"
+                                                            Command="{Binding CopyRemotePairCodeCommand}"
+                                                            Style="{StaticResource RemoteCopyButtonStyle}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Canvas Width="13" Height="13" VerticalAlignment="Center">
+                                                                <Rectangle Width="7" Height="7" RadiusX="1" RadiusY="1" StrokeThickness="1.1" Stroke="#A9B0D8" Canvas.Left="1.2" Canvas.Top="1.2" />
+                                                                <Rectangle Width="7" Height="7" RadiusX="1" RadiusY="1" StrokeThickness="1.1" Stroke="#A9B0D8" Canvas.Left="4.5" Canvas.Top="4.5" />
+                                                            </Canvas>
+                                                            <TextBlock Margin="6,0,0,0"
+                                                                       VerticalAlignment="Center"
+                                                                       FontSize="13"
+                                                                       FontWeight="SemiBold"
+                                                                       Text="Copy" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                </Grid>
+                                                <TextBlock Margin="0,8,0,0"
+                                                           FontSize="12.5"
+                                                           Foreground="#7C86B0"
+                                                           Text="Enter on your remote device to authenticate"
+                                                           TextWrapping="Wrap" />
                                             </StackPanel>
                                         </Border>
 
-                                        <Border Grid.Column="2"
-                                                Padding="12,10"
-                                                Background="{DynamicResource OverlayOptionBrush}"
-                                                BorderBrush="{DynamicResource OverlayOptionBorderBrush}"
+                                        <Border Margin="0,8,0,0"
+                                                Padding="14,12,14,12"
+                                                Background="#2A2E4A"
+                                                BorderBrush="#373F63"
                                                 BorderThickness="1"
                                                 CornerRadius="16">
                                             <StackPanel>
-                                                <TextBlock FontSize="11"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           Text="Live sources" />
-                                                <TextBlock Margin="0,6,0,0"
-                                                           FontSize="14"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                                           Text="{Binding LiveSessionCount, StringFormat={}{0} active}" />
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock FontSize="13"
+                                                               Foreground="#A6ADD2"
+                                                               Text="Session" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Margin="12,0,0,0"
+                                                                   FontSize="13.5"
+                                                                   FontFamily="Consolas"
+                                                                   Foreground="{DynamicResource AccentOrangeBrush}"
+                                                                   Text="{Binding RemoteSessionId}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    <Button Grid.Column="2"
+                                                            Command="{Binding CopyRemoteSessionIdCommand}"
+                                                            Style="{StaticResource RemoteCopyButtonStyle}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Canvas Width="13" Height="13" VerticalAlignment="Center">
+                                                                <Rectangle Width="7" Height="7" RadiusX="1" RadiusY="1" StrokeThickness="1.1" Stroke="#A9B0D8" Canvas.Left="1.2" Canvas.Top="1.2" />
+                                                                <Rectangle Width="7" Height="7" RadiusX="1" RadiusY="1" StrokeThickness="1.1" Stroke="#A9B0D8" Canvas.Left="4.5" Canvas.Top="4.5" />
+                                                            </Canvas>
+                                                            <TextBlock Margin="6,0,0,0"
+                                                                       VerticalAlignment="Center"
+                                                                       FontSize="13"
+                                                                       FontWeight="SemiBold"
+                                                                       Text="Copy" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                </Grid>
+                                                <TextBlock Margin="0,8,0,0"
+                                                           FontSize="12.5"
+                                                           Foreground="#7C86B0"
+                                                           Text="Unique session identifier"
+                                                           TextWrapping="Wrap" />
                                             </StackPanel>
                                         </Border>
+                                    </StackPanel>
+                                    </StackPanel>
+
+                                    <StackPanel Visibility="{Binding IsRemoteQrPanelVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Margin="0,4,0,0">
+                                        <Button x:Name="RemoteQrButtonCompact"
+                                                Width="196"
+                                                Height="196"
+                                                HorizontalAlignment="Center"
+                                                Command="{Binding OpenRemoteQrCommand}"
+                                                Cursor="Hand"
+                                                ToolTip="Open pairing URL"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="0"
+                                                Focusable="False"
+                                                FocusVisualStyle="{x:Null}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="{x:Type Button}">
+                                                    <ContentPresenter />
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                            <Border Background="#101010"
+                                                    BorderBrush="#373F63"
+                                                    BorderThickness="1"
+                                                    CornerRadius="20"
+                                                    ClipToBounds="True">
+                                                <Rectangle SnapsToDevicePixels="True">
+                                                    <Rectangle.Fill>
+                                                        <ImageBrush ImageSource="{Binding RemoteQrCodeImage}"
+                                                                    Stretch="Uniform"
+                                                                    AlignmentX="Center"
+                                                                    AlignmentY="Center"
+                                                                    RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                                                    </Rectangle.Fill>
+                                                </Rectangle>
+                                            </Border>
+                                        </Button>
+
+                                        <TextBlock Margin="0,4,0,0"
+                                                   FontSize="11.5"
+                                                   Foreground="#707CA7"
+                                                   Text="Scan with AudioBit Mobile to connect"
+                                                   TextAlignment="Center"
+                                                   TextWrapping="Wrap" />
+
+                                        <Grid Margin="0,6,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="8" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0"
+                                                    Height="34"
+                                                    Command="{Binding RefreshRemotePairingCommand}"
+                                                    Style="{StaticResource RemoteCopyButtonStyle}">
+                                                <TextBlock HorizontalAlignment="Center" FontSize="12" FontWeight="SemiBold" Text="Renew Session" />
+                                            </Button>
+                                            <Button Grid.Column="2"
+                                                    x:Name="RemoteSessionOverlayButton"
+                                                    Height="34"
+                                                    Command="{Binding ToggleRemoteSessionOverlayCommand}"
+                                                    ToolTip="{Binding RemoteSessionOverlayToggleToolTip}"
+                                                    Style="{StaticResource RemoteCopyButtonStyle}">
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                    <TextBlock FontSize="12" FontWeight="SemiBold" Text="Show Connected Devices" />
+                                                </StackPanel>
+                                            </Button>
+                                        </Grid>
+
+                                        <Popup x:Name="RemoteSessionOverlayPopup"
+                                               PlacementTarget="{Binding ElementName=RemoteQrButtonCompact}"
+                                               Placement="Center"
+                                               VerticalOffset="0"
+                                               AllowsTransparency="True"
+                                               PopupAnimation="None"
+                                               StaysOpen="False"
+                                               IsOpen="{Binding IsRemoteSessionOverlayVisible, Mode=TwoWay}"
+                                               DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                            <Border x:Name="RemoteSessionOverlayPanel"
+                                                    Width="196"
+                                                    Height="196"
+                                                    Padding="10,10,10,10"
+                                                    Background="#D9111522"
+                                                    BorderBrush="#A0465A86"
+                                                    BorderThickness="1"
+                                                    CornerRadius="18">
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="*" />
+                                                    </Grid.RowDefinitions>
+
+                                                    <TextBlock FontSize="11.5"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="#E7EBFF"
+                                                               Text="Connected Devices" />
+
+                                                    <Border Grid.Row="1"
+                                                            Margin="0,8,0,0"
+                                                            Padding="8,7,8,7"
+                                                            Background="#7D182238"
+                                                            BorderBrush="#8A3C4E77"
+                                                            BorderThickness="1"
+                                                            CornerRadius="10">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="58" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                            </Grid.RowDefinitions>
+                                                            <TextBlock FontSize="10" Foreground="#A8B3D8" Text="status" />
+                                                            <TextBlock Grid.Column="1" FontSize="10" Foreground="#EEF2FF" Text="{Binding RemoteSessionOverlayStatusText}" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Grid.Row="1" FontSize="10" Foreground="#A8B3D8" Text="session" />
+                                                            <TextBlock Grid.Row="1" Grid.Column="1" FontSize="10" Foreground="#EEF2FF" Text="{Binding RemoteSessionOverlayCurrentSessionText}" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Grid.Row="2" FontSize="10" Foreground="#A8B3D8" Text="devices" />
+                                                            <TextBlock Grid.Row="2" Grid.Column="1" FontSize="10" Foreground="#EEF2FF" Text="{Binding RemoteSessionOverlayDeviceCountText}" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Grid.Row="3" FontSize="10" Foreground="#A8B3D8" Text="device" />
+                                                            <TextBlock Grid.Row="3" Grid.Column="1" FontSize="10" Foreground="#EEF2FF" Text="{Binding RemoteSessionOverlayCurrentDeviceText}" TextTrimming="CharacterEllipsis" />
+                                                        </Grid>
+                                                    </Border>
+
+                                                    <Border Grid.Row="2"
+                                                            Margin="0,8,0,0"
+                                                            Padding="8,7,8,7"
+                                                            Background="#66192235"
+                                                            BorderBrush="#7D37496F"
+                                                            BorderThickness="1"
+                                                            CornerRadius="10">
+                                                        <Grid>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="*" />
+                                                            </Grid.RowDefinitions>
+                                                            <TextBlock FontSize="10"
+                                                                       Foreground="#A8B3D8"
+                                                                       Text="History" />
+                                                            <Grid Grid.Row="1" Margin="0,4,0,0">
+                                                                <TextBlock FontSize="10"
+                                                                           Foreground="#7380AA"
+                                                                           Text="No history yet">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="{x:Type TextBlock}">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding HasRemoteSessionHistory}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                                              HorizontalScrollBarVisibility="Disabled"
+                                                                              CanContentScroll="False">
+                                                                    <ItemsControl ItemsSource="{Binding RemoteSessionHistoryEntries}">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <TextBlock Margin="0,0,0,3"
+                                                                                           FontFamily="Consolas"
+                                                                                           FontSize="9.5"
+                                                                                           Foreground="#EEF2FF"
+                                                                                           Text="{Binding Summary}"
+                                                                                           TextTrimming="CharacterEllipsis" />
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </ScrollViewer>
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </Popup>
+
+                                    </StackPanel>
+
+                                    <StackPanel Visibility="{Binding IsRemoteConnected, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Margin="0,12,0,0">
+                                        <Border Padding="12,14,12,12"
+                                                BorderBrush="#165B44"
+                                                BorderThickness="1"
+                                                CornerRadius="18">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#072826" Offset="0" />
+                                                    <GradientStop Color="#0A1D3B" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <Grid>
+                                                <Border HorizontalAlignment="Right"
+                                                        VerticalAlignment="Top"
+                                                        Padding="8,6,8,6"
+                                                        Background="#0F243A"
+                                                        BorderBrush="#325170"
+                                                        BorderThickness="1"
+                                                        CornerRadius="10">
+                                                    <StackPanel HorizontalAlignment="Right">
+                                                        <TextBlock FontSize="9.5"
+                                                                   Foreground="#79A3CB"
+                                                                   Text="Connected through"
+                                                                   TextAlignment="Right" />
+                                                        <TextBlock Margin="0,2,0,0"
+                                                                   FontSize="10.5"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#D8E8FF"
+                                                                   Text="{Binding RemoteConnectedThroughText}"
+                                                                   TextAlignment="Right" />
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <StackPanel HorizontalAlignment="Center"
+                                                            Margin="0,12,0,0">
+                                                    <Border Width="66"
+                                                            Height="66"
+                                                            Background="#0D3A2A"
+                                                            BorderBrush="#0F7A51"
+                                                            BorderThickness="1"
+                                                            CornerRadius="33">
+                                                        <Border Width="48"
+                                                                Height="48"
+                                                                HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center"
+                                                                Background="#1DCF6D"
+                                                                CornerRadius="24">
+                                                            <Canvas Width="26" Height="26" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                <Ellipse Width="24" Height="24" Canvas.Left="1" Canvas.Top="1" Stroke="#EDFFF4" StrokeThickness="2" />
+                                                                <Path Stroke="#EDFFF4"
+                                                                      StrokeThickness="2.1"
+                                                                      StrokeStartLineCap="Round"
+                                                                      StrokeEndLineCap="Round"
+                                                                      Data="M7,13.2 L11.1,17.1 L18.5,9.2" />
+                                                            </Canvas>
+                                                        </Border>
+                                                    </Border>
+                                                    <TextBlock Margin="0,10,0,0"
+                                                               FontSize="14"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                                               Text="Device Connected"
+                                                               TextAlignment="Center" />
+                                                    <TextBlock Margin="0,4,0,0"
+                                                               FontSize="11.5"
+                                                               Foreground="#6BA2DF"
+                                                               Text="{Binding RemoteConnectedSubtitleText}"
+                                                               TextAlignment="Center" />
+                                                    <Border Margin="0,12,0,0"
+                                                            Padding="15,8,15,8"
+                                                            Background="#112E1D"
+                                                            BorderBrush="#1D6641"
+                                                            BorderThickness="1"
+                                                            CornerRadius="14">
+                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                            <Canvas Width="14" Height="14" VerticalAlignment="Center">
+                                                                <Ellipse Width="12" Height="12" Canvas.Left="1" Canvas.Top="1" Stroke="#36D17A" StrokeThickness="1.5" />
+                                                                <Path Stroke="#36D17A"
+                                                                      StrokeThickness="1.5"
+                                                                      StrokeStartLineCap="Round"
+                                                                      StrokeEndLineCap="Round"
+                                                                      Data="M3.5,7 L10.5,7" />
+                                                            </Canvas>
+                                                            <TextBlock Margin="7,0,0,0"
+                                                                       VerticalAlignment="Center"
+                                                                       FontSize="11"
+                                                                       Foreground="#88B698"
+                                                                       Text="One device per session" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Margin="0,10,0,0"
+                                                Padding="10,8,10,8"
+                                                Background="#2A2E4A"
+                                                BorderBrush="#373F63"
+                                                BorderThickness="1"
+                                                CornerRadius="16">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="38"
+                                                        Height="38"
+                                                        Background="#31375A"
+                                                        CornerRadius="12">
+                                                    <Canvas Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                        <Rectangle Width="10" Height="15" RadiusX="1.8" RadiusY="1.8" Canvas.Left="4" Canvas.Top="1.4"
+                                                                   Stroke="{DynamicResource AccentOrangeBrush}"
+                                                                   StrokeThickness="1.7" />
+                                                        <Line X1="7.4" Y1="14.2" X2="10.6" Y2="14.2"
+                                                              Stroke="{DynamicResource AccentOrangeBrush}"
+                                                              StrokeThickness="1.7"
+                                                              StrokeStartLineCap="Round"
+                                                              StrokeEndLineCap="Round" />
+                                                    </Canvas>
+                                                </Border>
+                                                <StackPanel Grid.Column="1"
+                                                            Margin="10,0,0,0"
+                                                            VerticalAlignment="Center">
+                                                    <TextBlock FontSize="14"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                                               Text="Remote Device" />
+                                                    <TextBlock Margin="0,2,0,0"
+                                                               FontSize="11.5"
+                                                               Foreground="#7E86B5"
+                                                               Text="{Binding RemoteConnectedDeviceSubtitle}"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2"
+                                                            Orientation="Vertical"
+                                                            VerticalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal"
+                                                                HorizontalAlignment="Right">
+                                                        <Canvas Width="15" Height="12" VerticalAlignment="Center">
+                                                            <Rectangle Width="2" Height="4" Canvas.Left="0" Canvas.Top="8" Fill="#22C55E" />
+                                                            <Rectangle Width="2" Height="6" Canvas.Left="4" Canvas.Top="6" Fill="#22C55E" />
+                                                            <Rectangle Width="2" Height="8" Canvas.Left="8" Canvas.Top="4" Fill="#22C55E" />
+                                                            <Rectangle Width="2" Height="10" Canvas.Left="12" Canvas.Top="2" Fill="#22C55E" />
+                                                        </Canvas>
+                                                        <TextBlock Margin="6,0,0,0"
+                                                                   VerticalAlignment="Center"
+                                                                   FontSize="12.5"
+                                                                   Foreground="#22C55E"
+                                                                   Text="Live" />
+                                                    </StackPanel>
+                                                    <Button x:Name="RemoteDeviceInfoButton"
+                                                            Width="22"
+                                                            Height="22"
+                                                            Margin="0,6,0,0"
+                                                            HorizontalAlignment="Right"
+                                                            Command="{Binding ToggleRemoteDeviceInfoPanelCommand}"
+                                                            ToolTip="{Binding RemoteDeviceInfoToggleToolTip}"
+                                                            MouseEnter="RemoteDeviceInfoTrigger_OnPreviewMouseEnter"
+                                                            MouseLeave="RemoteDeviceInfoTrigger_OnPreviewMouseLeave">
+                                                        <Button.Style>
+                                                            <Style TargetType="{x:Type Button}">
+                                                                <Setter Property="Background" Value="#31375A" />
+                                                                <Setter Property="BorderBrush" Value="#48527A" />
+                                                                <Setter Property="BorderThickness" Value="1" />
+                                                                <Setter Property="Foreground" Value="#C1C7EA" />
+                                                                <Setter Property="Cursor" Value="Hand" />
+                                                                <Setter Property="Padding" Value="0" />
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="{x:Type Button}">
+                                                                            <Border x:Name="InfoButtonBorder"
+                                                                                    Background="{TemplateBinding Background}"
+                                                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                    CornerRadius="11">
+                                                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                                                  VerticalAlignment="Center" />
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter TargetName="InfoButtonBorder" Property="Opacity" Value="0.92" />
+                                                                                </Trigger>
+                                                                                <Trigger Property="IsPressed" Value="True">
+                                                                                    <Setter TargetName="InfoButtonBorder" Property="Opacity" Value="0.84" />
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                            </Style>
+                                                        </Button.Style>
+                                                        <TextBlock FontSize="12"
+                                                                   FontWeight="SemiBold"
+                                                                   Text="i" />
+                                                    </Button>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border x:Name="RemoteDeviceInfoPanel"
+                                                Margin="0,8,0,0"
+                                                Padding="10,10,10,10"
+                                                Background="#222842"
+                                                BorderBrush="#344066"
+                                                BorderThickness="1"
+                                                CornerRadius="12"
+                                                Visibility="{Binding IsRemoteDeviceInfoPanelVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                MouseEnter="RemoteDeviceInfoPanel_OnMouseEnter"
+                                                MouseLeave="RemoteDeviceInfoPanel_OnMouseLeave">
+                                            <StackPanel>
+                                                <TextBlock FontSize="11.5"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           Text="Connected Device Info" />
+                                                <Grid Margin="0,8,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <TextBlock FontSize="10.5" Foreground="#8D95C2" Text="device_id" />
+                                                    <TextBlock Grid.Column="1" FontSize="10.5" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemoteDeviceIdText}" TextWrapping="Wrap" />
+                                                    <TextBlock Grid.Row="1" FontSize="10.5" Foreground="#8D95C2" Text="device_name" />
+                                                    <TextBlock Grid.Row="1" Grid.Column="1" FontSize="10.5" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemoteDeviceNameText}" TextWrapping="Wrap" />
+                                                    <TextBlock Grid.Row="2" FontSize="10.5" Foreground="#8D95C2" Text="device_location" />
+                                                    <TextBlock Grid.Row="2" Grid.Column="1" FontSize="10.5" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemoteDeviceLocationText}" TextWrapping="Wrap" />
+                                                    <TextBlock Grid.Row="3" FontSize="10.5" Foreground="#8D95C2" Text="connection_type" />
+                                                    <TextBlock Grid.Row="3" Grid.Column="1" FontSize="10.5" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemoteDeviceConnectionTypeText}" TextWrapping="Wrap" />
+                                                    <TextBlock Grid.Row="4" FontSize="10.5" Foreground="#8D95C2" Text="ip_address" />
+                                                    <TextBlock Grid.Row="4" Grid.Column="1" FontSize="10.5" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemoteDeviceIpAddressText}" TextWrapping="Wrap" />
+                                                    <TextBlock Grid.Row="5" FontSize="10.5" Foreground="#8D95C2" Text="user_agent" />
+                                                    <TextBlock Grid.Row="5" Grid.Column="1" FontSize="10.5" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemoteDeviceUserAgentText}" TextWrapping="Wrap" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Grid Margin="0,8,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="10" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <Border Grid.Row="0"
+                                                    Grid.Column="0"
+                                                    Padding="8,8,8,8"
+                                                    Background="#2A2E4A"
+                                                    BorderBrush="#373F63"
+                                                    BorderThickness="1"
+                                                    CornerRadius="14">
+                                                <StackPanel HorizontalAlignment="Center">
+                                                    <TextBlock FontSize="11.5"
+                                                               Foreground="#8D95C2"
+                                                               Text="Latency"
+                                                               TextAlignment="Center" />
+                                                    <TextBlock Margin="0,4,0,0"
+                                                               FontSize="14"
+                                                               FontFamily="Consolas"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource AccentOrangeBrush}"
+                                                               Text="{Binding RemoteConnectedLatencyText}"
+                                                               TextAlignment="Center" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Grid.Row="0"
+                                                    Grid.Column="2"
+                                                    Padding="8,8,8,8"
+                                                    Background="#2A2E4A"
+                                                    BorderBrush="#373F63"
+                                                    BorderThickness="1"
+                                                    CornerRadius="14">
+                                                <StackPanel HorizontalAlignment="Center">
+                                                    <TextBlock FontSize="11.5"
+                                                               Foreground="#8D95C2"
+                                                               Text="Strength"
+                                                               TextAlignment="Center" />
+                                                    <TextBlock Margin="0,4,0,0"
+                                                               FontSize="13"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{Binding RemoteConnectedStrengthBrush}"
+                                                               Text="{Binding RemoteConnectedStrengthText}"
+                                                               TextAlignment="Center" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Grid.Row="1"
+                                                    Grid.Column="0"
+                                                    Grid.ColumnSpan="3"
+                                                    Margin="0,8,0,0"
+                                                    Padding="8,8,8,8"
+                                                    Background="#2A2E4A"
+                                                    BorderBrush="#373F63"
+                                                    BorderThickness="1"
+                                                    CornerRadius="14">
+                                                <StackPanel HorizontalAlignment="Center">
+                                                    <TextBlock FontSize="11.5"
+                                                               Foreground="#8D95C2"
+                                                               Text="Protocol"
+                                                               TextAlignment="Center" />
+                                                    <TextBlock Margin="0,4,0,0"
+                                                               FontSize="13"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="#D48BFF"
+                                                               Text="{Binding RemoteConnectedProtocolText}"
+                                                               TextAlignment="Center"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+
+                                        <Border Margin="0,10,0,0"
+                                                Height="1"
+                                                Background="#303659" />
+
+                                        <Button Margin="0,10,0,0"
+                                                Height="44"
+                                                Command="{Binding RemoveRemoteDeviceCommand}">
+                                            <Button.Style>
+                                                <Style TargetType="{x:Type Button}">
+                                                    <Setter Property="Background" Value="#4C0B12" />
+                                                    <Setter Property="BorderBrush" Value="#7A111A" />
+                                                    <Setter Property="BorderThickness" Value="1" />
+                                                    <Setter Property="Foreground" Value="#FF4A51" />
+                                                    <Setter Property="Cursor" Value="Hand" />
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="{x:Type Button}">
+                                                                <Border x:Name="DisconnectBorder"
+                                                                        Background="{TemplateBinding Background}"
+                                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                                        CornerRadius="16">
+                                                                    <ContentPresenter />
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="DisconnectBorder" Property="Opacity" Value="0.94" />
+                                                                    </Trigger>
+                                                                    <Trigger Property="IsPressed" Value="True">
+                                                                        <Setter TargetName="DisconnectBorder" Property="Opacity" Value="0.88" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </Button.Style>
+                                            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                                                <Canvas Width="15" Height="15" VerticalAlignment="Center">
+                                                    <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.8"
+                                                          StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          Data="M9.5,2.2 L5.5,2.2 C4.1,2.2 3,3.3 3,4.7 L3,10.3 C3,11.7 4.1,12.8 5.5,12.8 L9.5,12.8" />
+                                                    <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.8"
+                                                          StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          Data="M8.2,7.5 L13.2,7.5 M11.2,5.2 L13.2,7.5 L11.2,9.8" />
+                                                </Canvas>
+                                                <TextBlock Margin="9,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           Text="Remove Device" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <Grid Visibility="Collapsed">
+                                    <StackPanel Margin="0,12,0,0"
+                                                HorizontalAlignment="Center"
+                                                Visibility="{Binding IsRemoteDefaultPanelVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Border Width="62"
+                                                Height="62"
+                                                Background="#252742"
+                                                CornerRadius="18">
+                                            <Canvas Width="30" Height="30" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Path Stroke="#3A3C55" StrokeThickness="2.1" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Data="M3.8,11 C8.8,6.2 21.2,6.2 26.2,11" />
+                                                <Path Stroke="#3A3C55" StrokeThickness="2.1" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Data="M8.3,15.5 C11.8,12.6 18.2,12.6 21.7,15.5" />
+                                                <Ellipse Width="3.2" Height="3.2" Canvas.Left="13.4" Canvas.Top="20.2" Fill="#3A3C55" />
+                                            </Canvas>
+                                        </Border>
+                                        <TextBlock Margin="0,9,0,0"
+                                                   FontSize="12"
+                                                   Foreground="#666880"
+                                                   Text="Select a connection method above to pair your device"
+                                                   TextAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.Style>
+                                            <Style TargetType="{x:Type Grid}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRemoteSidPanelVisible}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsRemoteConnected}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="Pair Code" />
+                                        <TextBlock Grid.Column="1" Margin="10,0,0,0" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemotePairCode}" />
+                                        <Button Grid.Column="2"
+                                                Margin="10,0,0,0"
+                                                MinWidth="56"
+                                                Command="{Binding CopyRemotePairCodeCommand}"
+                                                Style="{StaticResource SettingsActionButtonStyle}">
+                                            <TextBlock HorizontalAlignment="Center" FontSize="10.5" FontWeight="SemiBold" Text="Copy" />
+                                        </Button>
+                                    </Grid>
+
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.Style>
+                                            <Style TargetType="{x:Type Grid}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRemoteSidPanelVisible}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsRemoteConnected}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="Session" />
+                                        <TextBlock Grid.Column="1" Margin="10,0,0,0" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemoteSessionId}" TextTrimming="CharacterEllipsis" />
+                                        <Button Grid.Column="2"
+                                                Margin="10,0,0,0"
+                                                MinWidth="56"
+                                                Command="{Binding CopyRemoteSessionIdCommand}"
+                                                Style="{StaticResource SettingsActionButtonStyle}">
+                                            <TextBlock HorizontalAlignment="Center" FontSize="10.5" FontWeight="SemiBold" Text="Copy" />
+                                        </Button>
+                                    </Grid>
+
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.Style>
+                                            <Style TargetType="{x:Type Grid}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRemoteSidPanelVisible}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsRemoteConnected}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Text="Expires" />
+                                        <TextBlock Grid.Column="1" Margin="10,0,0,0" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding RemoteSessionExpiresText}" />
+                                    </Grid>
+
+                                    <Button Margin="0,10,0,0"
+                                            MinWidth="228"
+                                            Height="38"
+                                            HorizontalAlignment="Center"
+                                            Command="{Binding GenerateRemoteQrCodeCommand}">
+                                        <Button.Style>
+                                            <Style BasedOn="{StaticResource SettingsActionButtonStyle}" TargetType="{x:Type Button}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsRemoteQrPanelVisible}" Value="True" />
+                                                            <Condition Binding="{Binding HasRemoteQrCodeImage}" Value="False" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                        <TextBlock HorizontalAlignment="Center" FontSize="11.5" FontWeight="SemiBold" Text="Generate QR Code" />
+                                    </Button>
+
+                                    <Button x:Name="RemoteQrButtonLarge"
+                                            Margin="0,10,0,0"
+                                            Width="252"
+                                            Height="252"
+                                            HorizontalAlignment="Center"
+                                            Command="{Binding OpenRemoteQrCommand}"
+                                            Cursor="Hand"
+                                            ToolTip="Open pairing URL"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="0"
+                                            Focusable="False"
+                                            FocusVisualStyle="{x:Null}">
+                                        <Button.Style>
+                                            <Style TargetType="{x:Type Button}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsRemoteQrPanelVisible}" Value="True" />
+                                                            <Condition Binding="{Binding HasRemoteQrCodeImage}" Value="True" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="{x:Type Button}">
+                                                <ContentPresenter />
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                        <Border x:Name="RemoteQrCardBorder"
+                                                Background="Transparent"
+                                                BorderBrush="#FFE88A34"
+                                                BorderThickness="1"
+                                                CornerRadius="52"
+                                                Padding="0"
+                                                ClipToBounds="True"
+                                                UseLayoutRounding="True"
+                                                SnapsToDevicePixels="False">
+                                            <Rectangle RadiusX="52"
+                                                       RadiusY="52"
+                                                       SnapsToDevicePixels="True">
+                                                <Rectangle.Fill>
+                                                    <ImageBrush ImageSource="{Binding RemoteQrCodeImage}"
+                                                                Stretch="Uniform"
+                                                                AlignmentX="Center"
+                                                                AlignmentY="Center"
+                                                                RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                                                </Rectangle.Fill>
+                                            </Rectangle>
+                                        </Border>
+                                    </Button>
+
+                                    <TextBlock Margin="0,9,0,0"
+                                               FontSize="11"
+                                               Foreground="#666880"
+                                               Visibility="{Binding IsRemoteQrPanelVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                               Text="Scan with AudioBit Mobile to connect"
+                                               TextAlignment="Center"
+                                               TextWrapping="Wrap" />
+
+                                    <Grid Margin="0,10,0,0"
+                                          Visibility="{Binding IsRemoteQrPanelVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="10" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0"
+                                                Command="{Binding RefreshRemotePairingCommand}"
+                                                Style="{StaticResource SettingsActionButtonStyle}">
+                                            <TextBlock HorizontalAlignment="Center" FontSize="11.5" FontWeight="SemiBold" Text="Renew Session" />
+                                        </Button>
+                                        <Button Grid.Column="2"
+                                                Command="{Binding GenerateRemoteQrCodeCommand}"
+                                                Style="{StaticResource SettingsActionButtonStyle}">
+                                            <TextBlock HorizontalAlignment="Center" FontSize="11.5" FontWeight="SemiBold" Text="Refresh QR" />
+                                        </Button>
+                                    </Grid>
+
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.Style>
+                                            <Style TargetType="{x:Type Grid}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRemoteSidPanelVisible}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsRemoteConnected}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="10" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Command="{Binding RefreshRemotePairingCommand}" Style="{StaticResource SettingsActionButtonStyle}">
+                                            <TextBlock HorizontalAlignment="Center" FontSize="11.5" FontWeight="SemiBold" Text="Renew Session" />
+                                        </Button>
+                                        <Button Grid.Column="2" Command="{Binding OpenRemoteQrCommand}" Style="{StaticResource SettingsActionButtonStyle}">
+                                            <TextBlock HorizontalAlignment="Center" FontSize="11.5" FontWeight="SemiBold" Text="Open QR URL" />
+                                        </Button>
+                                    </Grid>
                                     </Grid>
                                 </StackPanel>
                             </Border>
-
-                            <TextBlock Margin="0,18,0,0"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="PROFILE SHELL" />
-
-                            <StackPanel Margin="0,10,0,0">
-                                <Button Tag="mixer-core"
-                                        Command="{Binding SelectAgentCommand}"
-                                        CommandParameter="mixer-core"
-                                        Style="{StaticResource AgentOptionButtonStyle}">
-                                    <StackPanel>
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontSize="14"
-                                                   FontWeight="SemiBold"
-                                                   Text="Mixer Core" />
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Text="Default live monitor" />
-                                    </StackPanel>
-                                </Button>
-
-                                <Button Tag="device-watch"
-                                        Command="{Binding SelectAgentCommand}"
-                                        CommandParameter="device-watch"
-                                        Style="{StaticResource AgentOptionButtonStyle}">
-                                    <StackPanel>
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontSize="14"
-                                                   FontWeight="SemiBold"
-                                                   Text="Device Watch" />
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Text="Track output route changes" />
-                                    </StackPanel>
-                                </Button>
-
-                                <Button Tag="quiet-night"
-                                        Command="{Binding SelectAgentCommand}"
-                                        CommandParameter="quiet-night"
-                                        Style="{StaticResource AgentOptionButtonStyle}">
-                                    <StackPanel>
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontSize="14"
-                                                   FontWeight="SemiBold"
-                                                   Text="Quiet Night" />
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Text="Lower motion and calmer peaks" />
-                                    </StackPanel>
-                                </Button>
                             </StackPanel>
-
-                            <TextBlock Margin="0,18,0,0"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="CALIBRATION" />
-
-                            <Border Margin="0,10,0,0"
-                                    Padding="16,14,16,14"
-                                    Style="{StaticResource SettingsSectionCardStyle}">
-                                <StackPanel>
-                                    <TextBlock FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="Calibration snapshot" />
-                                    <TextBlock Margin="0,6,0,0"
-                                               FontSize="18"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="{Binding AppliedCalibrationLabel}" />
-                                    <TextBlock Margin="0,8,0,0"
-                                               FontSize="11.5"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="{Binding CalibrationSummary}"
-                                               TextWrapping="Wrap" />
-
-                                    <Grid Margin="0,14,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="10" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <Button Grid.Column="0"
-                                                Command="{Binding OpenCalibrateCommand}"
-                                                Style="{StaticResource SettingsActionButtonStyle}">
-                                            <TextBlock FontSize="12.5"
-                                                       FontWeight="SemiBold"
-                                                       Text="Calibrate" />
-                                        </Button>
-
-                                        <Button Grid.Column="2"
-                                                Command="{Binding OpenCalibratedAgentsCommand}"
-                                                Style="{StaticResource SettingsActionButtonStyle}">
-                                            <TextBlock FontSize="12.5"
-                                                       FontWeight="SemiBold"
-                                                       Text="Saved Snapshots" />
-                                        </Button>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
-
-                            <TextBlock Margin="0,18,0,0"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Text="PROFILE BACKUP" />
-
-                            <Border Margin="0,10,0,0"
-                                    Padding="16,14,16,14"
-                                    Style="{StaticResource SettingsSectionCardStyle}">
-                                <StackPanel>
-                                    <TextBlock FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="Current device snapshot" />
-                                    <TextBlock Margin="0,6,0,0"
-                                               FontSize="18"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               Text="{Binding DeviceDisplayName}"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock Margin="0,8,0,0"
-                                               FontSize="11.5"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="{Binding StatusText}"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock Margin="0,10,0,0"
-                                               FontSize="11.5"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="{Binding SelectedAgentFootnote}"
-                                               TextWrapping="Wrap" />
-
-                                    <Grid Margin="0,14,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="10" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <Button Grid.Column="0"
-                                                Command="{Binding ExportProfilesCommand}"
-                                                Style="{StaticResource SettingsActionButtonStyle}">
-                                            <TextBlock FontSize="12.5"
-                                                       FontWeight="SemiBold"
-                                                       Text="Export" />
-                                        </Button>
-
-                                        <Button Grid.Column="2"
-                                                Command="{Binding ImportProfilesCommand}"
-                                                Style="{StaticResource SettingsActionButtonStyle}">
-                                            <TextBlock FontSize="12.5"
-                                                       FontWeight="SemiBold"
-                                                       Text="Import" />
-                                        </Button>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </ScrollViewer>
+                        </ScrollViewer>
+                    </Grid>
 
                     <ScrollViewer x:Name="SettingsContentHost"
                                   Grid.Row="3"
@@ -1996,17 +3042,6 @@
                                         </Grid>
                                     </StackPanel>
                                 </StackPanel>
-                            </Border>
-
-                            <Border Margin="0,10,0,0"
-                                    MinHeight="92"
-                                    Padding="14,12,14,12"
-                                    Style="{StaticResource SettingsSectionCardStyle}">
-                                <TextBlock FontSize="18"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           Text="RemoteBit"
-                                           VerticalAlignment="Center" />
                             </Border>
 
                             <TextBlock Margin="0,18,0,0"
@@ -2473,18 +3508,58 @@
                             </Button>
 
                             <Button Grid.Column="1"
-                                    Tag="Profiles"
+                                    Tag="Remote"
                                     Command="{Binding SelectProfilesTabCommand}"
                                     Style="{StaticResource FooterTabButtonStyle}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <Canvas Width="18" Height="18">
-                                        <Ellipse Width="6" Height="6" Canvas.Left="6" Canvas.Top="2" Style="{StaticResource FooterTabFillShapeStyle}" />
-                                        <Path Style="{StaticResource FooterTabFillShapeStyle}"
-                                              Data="M4,16 C4.4,12.6 6.8,10.5 9,10.5 C11.2,10.5 13.6,12.6 14,16 Z" />
+                                        <Path StrokeThickness="1.4"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              Style="{StaticResource FooterTabStrokeShapeStyle}"
+                                              Data="M3.5,7.2 C6.4,4.3 11.6,4.3 14.5,7.2" />
+                                        <Path StrokeThickness="1.4"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              Style="{StaticResource FooterTabStrokeShapeStyle}"
+                                              Data="M5.8,9.6 C7.6,7.9 10.4,7.9 12.2,9.6" />
+                                        <Ellipse Width="1.8"
+                                                 Height="1.8"
+                                                 Canvas.Left="8.1"
+                                                 Canvas.Top="10.8"
+                                                 Style="{StaticResource FooterTabFillShapeStyle}" />
+                                        <Rectangle Width="2"
+                                                   Height="2.4"
+                                                   RadiusX="0.7"
+                                                   RadiusY="0.7"
+                                                   Canvas.Left="3.9"
+                                                   Canvas.Top="12.6"
+                                                   Style="{StaticResource FooterTabFillShapeStyle}" />
+                                        <Rectangle Width="2"
+                                                   Height="3.4"
+                                                   RadiusX="0.7"
+                                                   RadiusY="0.7"
+                                                   Canvas.Left="6.9"
+                                                   Canvas.Top="11.6"
+                                                   Style="{StaticResource FooterTabFillShapeStyle}" />
+                                        <Rectangle Width="2"
+                                                   Height="4.4"
+                                                   RadiusX="0.7"
+                                                   RadiusY="0.7"
+                                                   Canvas.Left="9.9"
+                                                   Canvas.Top="10.6"
+                                                   Style="{StaticResource FooterTabFillShapeStyle}" />
+                                        <Rectangle Width="2"
+                                                   Height="5.4"
+                                                   RadiusX="0.7"
+                                                   RadiusY="0.7"
+                                                   Canvas.Left="12.9"
+                                                   Canvas.Top="9.6"
+                                                   Style="{StaticResource FooterTabFillShapeStyle}" />
                                     </Canvas>
                                     <TextBlock Margin="0,4,0,0"
                                                Style="{StaticResource FooterTabTextStyle}"
-                                               Text="Profiles" />
+                                               Text="Remote" />
                                 </StackPanel>
                             </Button>
 
@@ -2538,13 +3613,28 @@
                         </Grid>
                     </Border>
 
+                    </Grid>
+
                     <Grid x:Name="OverlayLayer"
                           Grid.RowSpan="7"
                           Panel.ZIndex="30"
-                          Visibility="{Binding IsOverlayVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                          Visibility="{Binding IsAnyOverlayVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Border x:Name="OverlayBlurLayer"
+                                Margin="10"
+                                CornerRadius="22"
+                                Opacity="0.65"
+                                IsHitTestVisible="False">
+                            <Border.Background>
+                                <VisualBrush Visual="{Binding ElementName=ShellContentRoot}" />
+                            </Border.Background>
+                            <Border.Effect>
+                                <BlurEffect Radius="18" />
+                            </Border.Effect>
+                        </Border>
                         <Border Margin="10"
                                 Background="{DynamicResource OverlayShadeBrush}"
-                                CornerRadius="22" />
+                                CornerRadius="22"
+                                Opacity="0.75" />
 
                         <Border x:Name="CalibrateOverlayHost"
                                 Width="300"
@@ -2557,6 +3647,9 @@
                                 BorderThickness="1"
                                 CornerRadius="24"
                                 Visibility="{Binding IsCalibrateOverlayOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="CalibrateOverlayShift" />
+                            </Border.RenderTransform>
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -2728,6 +3821,9 @@
                                 BorderThickness="1"
                                 CornerRadius="24"
                                 Visibility="{Binding IsCalibratedAgentsOverlayOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="SavedOverlayShift" />
+                            </Border.RenderTransform>
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />

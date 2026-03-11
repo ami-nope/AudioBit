@@ -16,19 +16,32 @@ public sealed class AudioSessionService : IDisposable
     private static readonly TimeSpan SilentRetention = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DeviceInventoryRefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan DeviceRouteRefreshInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan DeviceSwitchGracePeriod = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan PendingRouteWriteRetryInterval = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan RouteReadbackGracePeriod = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan RouteWriteMinInterval = TimeSpan.FromMilliseconds(650);
+    private const int MaxPendingRouteWriteRetries = 6;
+    private const int MaxIconCacheEntries = 256;
 
     private readonly object _syncRoot = new();
+    private readonly object _audioPolicyConfigSyncRoot = new();
     private readonly MMDeviceEnumerator _deviceEnumerator;
     private readonly EndpointNotificationClient _endpointNotificationClient;
     private readonly AudioPolicyConfigBridge _audioPolicyConfigBridge;
     private readonly Dictionary<int, AppAudioModel> _appsByProcessId = new();
     private readonly Dictionary<int, DeviceRouteCacheEntry> _deviceRouteCache = new();
+    private readonly Dictionary<string, AppRoutePreference> _routePreferencesByAppKey = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ImageSource> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<int, SessionGroup> _liveGroupsBuffer = new();
+    private readonly HashSet<int> _visibleProcessIdsBuffer = new();
+    private readonly List<int> _expiredProcessIdsBuffer = new();
+    private readonly HashSet<int> _routeTargetProcessIdsBuffer = new();
     private readonly ImageSource _defaultIcon;
 
     private bool _disposed;
     private bool _defaultDeviceChanged = true;
     private bool _deviceInventoryChanged = true;
+    private DateTime _defaultDeviceChangeUtc = DateTime.UtcNow;
     private DateTime _lastDeviceInventoryRefreshUtc = DateTime.MinValue;
     private string _currentPlaybackDeviceId = string.Empty;
     private string _currentDeviceName = "No playback device";
@@ -36,6 +49,7 @@ public sealed class AudioSessionService : IDisposable
     private string _currentCaptureDeviceName = "No input device";
     private bool _hasPlaybackDevice;
     private bool _hasCaptureDevice;
+    private bool _isDefaultCaptureMuted;
     private float _masterVolume;
     private bool _isMasterMuted;
     private IReadOnlyList<AudioDeviceOptionModel> _renderDeviceOptions = Array.Empty<AudioDeviceOptionModel>();
@@ -48,7 +62,7 @@ public sealed class AudioSessionService : IDisposable
         _deviceEnumerator = new MMDeviceEnumerator();
         _endpointNotificationClient = new EndpointNotificationClient(
             onDeviceInventoryChanged: () => _deviceInventoryChanged = true,
-            onDefaultPlaybackDeviceChanged: () => _defaultDeviceChanged = true);
+            onDefaultPlaybackDeviceChanged: OnDefaultPlaybackDeviceChanged);
 
         try
         {
@@ -93,6 +107,28 @@ public sealed class AudioSessionService : IDisposable
         }
     }
 
+    public string CurrentPlaybackDeviceId
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _currentPlaybackDeviceId;
+            }
+        }
+    }
+
+    public string CurrentCaptureDeviceId
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _currentCaptureDeviceId;
+            }
+        }
+    }
+
     public bool HasCaptureDevice
     {
         get
@@ -100,6 +136,17 @@ public sealed class AudioSessionService : IDisposable
             lock (_syncRoot)
             {
                 return _hasCaptureDevice;
+            }
+        }
+    }
+
+    public bool IsDefaultCaptureMuted
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _isDefaultCaptureMuted;
             }
         }
     }
@@ -155,18 +202,41 @@ public sealed class AudioSessionService : IDisposable
         lock (_syncRoot)
         {
             var now = DateTime.UtcNow;
+            var pendingDefaultSwitch = _defaultDeviceChanged;
+            var previousPlaybackDeviceId = _currentPlaybackDeviceId;
 
-            if (_defaultDeviceChanged)
+            _liveGroupsBuffer.Clear();
+            var hasPlaybackEndpoint = CollectLiveGroups(_liveGroupsBuffer);
+
+            if (pendingDefaultSwitch)
             {
-                _appsByProcessId.Clear();
+                if (hasPlaybackEndpoint)
+                {
+                    if (!string.Equals(previousPlaybackDeviceId, _currentPlaybackDeviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _appsByProcessId.Clear();
+                        _deviceRouteCache.Clear();
+                    }
+
+                    _defaultDeviceChanged = false;
+                }
+                else if (now - _defaultDeviceChangeUtc >= DeviceSwitchGracePeriod)
+                {
+                    _appsByProcessId.Clear();
+                    _deviceRouteCache.Clear();
+                    _defaultDeviceChanged = false;
+                }
             }
 
-            var liveGroups = CollectLiveGroups();
-            var visibleProcessIds = new HashSet<int>(liveGroups.Keys);
+            _visibleProcessIdsBuffer.Clear();
+            foreach (var processId in _liveGroupsBuffer.Keys)
+            {
+                _visibleProcessIdsBuffer.Add(processId);
+            }
 
             RefreshDeviceInventory(now);
 
-            foreach (var group in liveGroups.Values)
+            foreach (var group in _liveGroupsBuffer.Values)
             {
                 if (!_appsByProcessId.TryGetValue(group.ProcessId, out var model))
                 {
@@ -200,35 +270,51 @@ public sealed class AudioSessionService : IDisposable
                 }
             }
 
-            RefreshDeviceRoutes(visibleProcessIds, now);
+            RefreshDeviceRoutes(_visibleProcessIdsBuffer, now);
 
             foreach (var model in _appsByProcessId.Values)
             {
-                if (!visibleProcessIds.Contains(model.ProcessId))
+                if (!_visibleProcessIdsBuffer.Contains(model.ProcessId))
                 {
                     model.Peak = 0.0f;
                 }
             }
 
-            var expiredIds = _appsByProcessId.Values
-                .Where(model => model.Peak <= AppAudioModel.SilenceThreshold)
-                .Where(model => now - model.LastAudioTime > SilentRetention)
-                .Where(model => !model.IsMuted || !visibleProcessIds.Contains(model.ProcessId))
-                .Select(model => model.ProcessId)
-                .ToArray();
+            _expiredProcessIdsBuffer.Clear();
+            foreach (var model in _appsByProcessId.Values)
+            {
+                if (model.Peak > AppAudioModel.SilenceThreshold)
+                {
+                    continue;
+                }
 
-            foreach (var processId in expiredIds)
+                if (now - model.LastAudioTime <= SilentRetention)
+                {
+                    continue;
+                }
+
+                if (model.IsMuted && _visibleProcessIdsBuffer.Contains(model.ProcessId))
+                {
+                    continue;
+                }
+
+                _expiredProcessIdsBuffer.Add(model.ProcessId);
+            }
+
+            foreach (var processId in _expiredProcessIdsBuffer)
             {
                 _appsByProcessId.Remove(processId);
                 _deviceRouteCache.Remove(processId);
             }
 
-            return _appsByProcessId.Values
-                .OrderBy(model => GetMixerPriority(model.AppName))
-                .ThenBy(model => model.AppName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(model => model.ProcessId)
-                .Select(model => model.Clone())
-                .ToList();
+            var snapshot = new List<AppAudioModel>(_appsByProcessId.Count);
+            foreach (var model in _appsByProcessId.Values)
+            {
+                snapshot.Add(model.Clone());
+            }
+
+            snapshot.Sort(AppAudioModelSortComparer.Instance);
+            return snapshot;
         }
     }
 
@@ -414,6 +500,7 @@ public sealed class AudioSessionService : IDisposable
                 _hasCaptureDevice = true;
                 _currentCaptureDeviceId = SafeRead(() => device.ID, string.Empty);
                 _currentCaptureDeviceName = device.FriendlyName;
+                _isDefaultCaptureMuted = isMuted;
             }
         }
         catch
@@ -423,6 +510,7 @@ public sealed class AudioSessionService : IDisposable
                 _hasCaptureDevice = false;
                 _currentCaptureDeviceId = string.Empty;
                 _currentCaptureDeviceName = "No input device";
+                _isDefaultCaptureMuted = false;
             }
         }
         finally
@@ -448,6 +536,7 @@ public sealed class AudioSessionService : IDisposable
                 _hasCaptureDevice = true;
                 _currentCaptureDeviceId = SafeRead(() => device.ID, string.Empty);
                 _currentCaptureDeviceName = device.FriendlyName;
+                _isDefaultCaptureMuted = nextMuted;
             }
         }
         catch
@@ -457,6 +546,7 @@ public sealed class AudioSessionService : IDisposable
                 _hasCaptureDevice = false;
                 _currentCaptureDeviceId = string.Empty;
                 _currentCaptureDeviceName = "No input device";
+                _isDefaultCaptureMuted = false;
             }
         }
         finally
@@ -486,76 +576,28 @@ public sealed class AudioSessionService : IDisposable
         _deviceEnumerator.Dispose();
     }
 
-    private Dictionary<int, SessionGroup> CollectLiveGroups()
+    private bool CollectLiveGroups(Dictionary<int, SessionGroup> groups)
     {
-        var groups = new Dictionary<int, SessionGroup>();
-        MMDevice? device = null;
+        MMDevice? defaultDevice = null;
+        var hasPlaybackDevice = false;
+        string defaultDeviceId = string.Empty;
 
         try
         {
-            device = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            defaultDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            hasPlaybackDevice = true;
             _hasPlaybackDevice = true;
-            _currentPlaybackDeviceId = SafeRead(() => device.ID, string.Empty);
-            _currentDeviceName = device.FriendlyName;
-            _masterVolume = SafeRead(() => device.AudioEndpointVolume.MasterVolumeLevelScalar, 0.0f);
-            _isMasterMuted = SafeRead(() => device.AudioEndpointVolume.Mute, false);
-            _defaultDeviceChanged = false;
+            defaultDeviceId = SafeRead(() => defaultDevice.ID, string.Empty);
+            _currentPlaybackDeviceId = defaultDeviceId;
+            _currentDeviceName = defaultDevice.FriendlyName;
+            _masterVolume = SafeRead(() => defaultDevice.AudioEndpointVolume.MasterVolumeLevelScalar, 0.0f);
+            _isMasterMuted = SafeRead(() => defaultDevice.AudioEndpointVolume.Mute, false);
 
-            var sessions = device.AudioSessionManager.Sessions;
-
-            for (var index = 0; index < sessions.Count; index++)
-            {
-                AudioSessionControl? session = null;
-
-                try
-                {
-                    session = sessions[index];
-                    if (session is null)
-                    {
-                        continue;
-                    }
-
-                    var processId = SafeGetProcessId(session);
-
-                    var audioMeter = session.AudioMeterInformation;
-                    using var simpleAudioVolume = session.SimpleAudioVolume;
-
-                    var peak = audioMeter.MasterPeakValue;
-                    var volume = simpleAudioVolume.Volume;
-                    var isMuted = simpleAudioVolume.Mute;
-                    var effectivePeak = isMuted || _isMasterMuted || volume <= AppAudioModel.SilenceThreshold
-                        ? 0.0f
-                        : Math.Clamp(peak * volume, 0.0f, 1.0f);
-
-                    if (effectivePeak <= AppAudioModel.SilenceThreshold * 0.75f)
-                    {
-                        effectivePeak = 0.0f;
-                    }
-
-                    if (!groups.TryGetValue(processId, out var group))
-                    {
-                        var identity = ResolveAppIdentity(processId, SafeRead(() => session.DisplayName, string.Empty));
-                        group = new SessionGroup(processId, identity.AppName, identity.Icon);
-                        groups.Add(processId, group);
-                    }
-
-                    group.Peak = Math.Max(group.Peak, effectivePeak);
-                    group.VolumeSum += volume;
-                    group.SessionCount++;
-                    group.AllMuted &= isMuted;
-                }
-                catch
-                {
-                    // Sessions are volatile and can disappear between enumeration and access.
-                }
-                finally
-                {
-                    session?.Dispose();
-                }
-            }
+            CollectSessionsFromDevice(defaultDevice, groups, isDefaultDevice: true);
         }
-        catch
+        catch (Exception ex)
         {
+            RouteLog($"CollectLiveGroups default device error: {ex.GetType().Name}: {ex.Message}");
             _hasPlaybackDevice = false;
             _currentPlaybackDeviceId = string.Empty;
             _currentDeviceName = "No playback device";
@@ -564,44 +606,126 @@ public sealed class AudioSessionService : IDisposable
         }
         finally
         {
-            device?.Dispose();
+            defaultDevice?.Dispose();
         }
 
-        return groups;
-    }
-
-    private void ForEachActiveSession(Action<AudioSessionControl, int> sessionAction)
-    {
-        MMDevice? device = null;
-
+        // Also enumerate sessions on non-default render devices so that apps
+        // routed to a different output remain visible in the mixer.
         try
         {
-            device = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            var sessions = device.AudioSessionManager.Sessions;
-
-            for (var index = 0; index < sessions.Count; index++)
+            var allDevices = _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+            foreach (MMDevice device in allDevices)
             {
-                AudioSessionControl? session = null;
-
                 try
                 {
-                    session = sessions[index];
-                    if (session is null)
+                    var deviceId = SafeRead(() => device.ID, string.Empty);
+                    if (string.Equals(deviceId, defaultDeviceId, StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
 
-                    sessionAction(session, SafeGetProcessId(session));
+                    CollectSessionsFromDevice(device, groups, isDefaultDevice: false);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore sessions that disappear while mutating the device state.
+                    RouteLog($"CollectLiveGroups non-default device error: {ex.GetType().Name}: {ex.Message}");
                 }
                 finally
                 {
-                    session?.Dispose();
+                    device.Dispose();
                 }
             }
+        }
+        catch
+        {
+            // Non-default device enumeration is best effort.
+        }
+
+        return hasPlaybackDevice;
+    }
+
+    private void CollectSessionsFromDevice(MMDevice device, Dictionary<int, SessionGroup> groups, bool isDefaultDevice)
+    {
+        var sessions = device.AudioSessionManager.Sessions;
+
+        for (var index = 0; index < sessions.Count; index++)
+        {
+            AudioSessionControl? session = null;
+
+            try
+            {
+                session = sessions[index];
+                if (session is null)
+                {
+                    continue;
+                }
+
+                var processId = SafeGetProcessId(session);
+
+                var audioMeter = session.AudioMeterInformation;
+                using var simpleAudioVolume = session.SimpleAudioVolume;
+
+                var peak = audioMeter.MasterPeakValue;
+                var volume = simpleAudioVolume.Volume;
+                var isMuted = simpleAudioVolume.Mute;
+
+                // On non-default devices, SimpleAudioVolume may report 0 even
+                // when the session is actively producing audio.  Use the raw
+                // peak in that case so routed apps stay visible.
+                var effectiveVolume = volume;
+                if (!isDefaultDevice && volume <= AppAudioModel.SilenceThreshold && peak > AppAudioModel.SilenceThreshold)
+                {
+                    effectiveVolume = 1.0f;
+                }
+
+                var effectivePeak = isMuted || (isDefaultDevice && _isMasterMuted) || effectiveVolume <= AppAudioModel.SilenceThreshold
+                    ? 0.0f
+                    : Math.Clamp(peak * effectiveVolume, 0.0f, 1.0f);
+
+                if (effectivePeak <= AppAudioModel.SilenceThreshold * 0.75f)
+                {
+                    effectivePeak = 0.0f;
+                }
+
+                if (!groups.TryGetValue(processId, out var group))
+                {
+                    var identity = ResolveAppIdentity(processId, SafeRead(() => session.DisplayName, string.Empty));
+                    group = new SessionGroup(processId, identity.AppName, identity.Icon);
+                    groups.Add(processId, group);
+                }
+
+                group.Peak = Math.Max(group.Peak, effectivePeak);
+                group.VolumeSum += effectiveVolume;
+                group.SessionCount++;
+                group.AllMuted &= isMuted;
+            }
+            catch
+            {
+                // Sessions are volatile and can disappear between enumeration and access.
+            }
+            finally
+            {
+                session?.Dispose();
+            }
+        }
+    }
+
+    private void ForEachActiveSession(Action<AudioSessionControl, int> sessionAction)
+    {
+        ForEachActiveSessionOnDevice(DataFlow.Render, sessionAction);
+    }
+
+    private void ForEachActiveSessionOnDevice(DataFlow dataFlow, Action<AudioSessionControl, int> sessionAction)
+    {
+        // Apply to sessions on the default device.
+        MMDevice? defaultDevice = null;
+        string defaultDeviceId = string.Empty;
+
+        try
+        {
+            defaultDevice = _deviceEnumerator.GetDefaultAudioEndpoint(dataFlow, Role.Multimedia);
+            defaultDeviceId = SafeRead(() => defaultDevice.ID, string.Empty);
+            RunSessionAction(defaultDevice, sessionAction);
         }
         catch
         {
@@ -609,7 +733,67 @@ public sealed class AudioSessionService : IDisposable
         }
         finally
         {
-            device?.Dispose();
+            defaultDevice?.Dispose();
+        }
+
+        // Also apply to sessions on non-default devices for routed apps.
+        try
+        {
+            var allDevices = _deviceEnumerator.EnumerateAudioEndPoints(dataFlow, DeviceState.Active);
+            foreach (MMDevice device in allDevices)
+            {
+                try
+                {
+                    var deviceId = SafeRead(() => device.ID, string.Empty);
+                    if (string.Equals(deviceId, defaultDeviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    RunSessionAction(device, sessionAction);
+                }
+                catch
+                {
+                    // Non-default device session access is best effort.
+                }
+                finally
+                {
+                    device.Dispose();
+                }
+            }
+        }
+        catch
+        {
+            // Non-default device enumeration is best effort.
+        }
+    }
+
+    private static void RunSessionAction(MMDevice device, Action<AudioSessionControl, int> sessionAction)
+    {
+        var sessions = device.AudioSessionManager.Sessions;
+
+        for (var index = 0; index < sessions.Count; index++)
+        {
+            AudioSessionControl? session = null;
+
+            try
+            {
+                session = sessions[index];
+                if (session is null)
+                {
+                    continue;
+                }
+
+                sessionAction(session, SafeGetProcessId(session));
+            }
+            catch
+            {
+                // Ignore sessions that disappear while mutating the device state.
+            }
+            finally
+            {
+                session?.Dispose();
+            }
         }
     }
 
@@ -618,39 +802,416 @@ public sealed class AudioSessionService : IDisposable
         ThrowIfDisposed();
 
         var normalizedDeviceId = string.IsNullOrWhiteSpace(deviceId) ? string.Empty : deviceId;
-        if (!_audioPolicyConfigBridge.TrySetPersistedDefaultAudioEndpoint(processId, flow, normalizedDeviceId))
+        List<int> targetProcessIds;
+
+        lock (_syncRoot)
+        {
+            _routeTargetProcessIdsBuffer.Clear();
+            if (processId > 0)
+            {
+                _routeTargetProcessIdsBuffer.Add(processId);
+            }
+
+            var appRouteKey = ResolveAppRouteKey(processId);
+            if (appRouteKey.Length > 0)
+            {
+                if (!_routePreferencesByAppKey.TryGetValue(appRouteKey, out var preference))
+                {
+                    preference = new AppRoutePreference();
+                    _routePreferencesByAppKey[appRouteKey] = preference;
+                }
+
+                if (flow == AudioDeviceFlow.Render)
+                {
+                    preference.HasRenderPreference = true;
+                    preference.RenderDeviceId = normalizedDeviceId;
+                }
+                else
+                {
+                    preference.HasCapturePreference = true;
+                    preference.CaptureDeviceId = normalizedDeviceId;
+                }
+
+                foreach (var model in _appsByProcessId.Values)
+                {
+                    if (string.Equals(NormalizeAppRouteKey(model.AppName), appRouteKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _routeTargetProcessIdsBuffer.Add(model.ProcessId);
+                    }
+                }
+            }
+
+            if (_routeTargetProcessIdsBuffer.Count == 0 && processId > 0)
+            {
+                _routeTargetProcessIdsBuffer.Add(processId);
+            }
+
+            var now = DateTime.UtcNow;
+            foreach (var targetProcessId in _routeTargetProcessIdsBuffer)
+            {
+                var route = GetOrCreateRouteCacheEntry(targetProcessId);
+                ApplyUserPreferredDevice(route, targetProcessId, flow, normalizedDeviceId, now);
+            }
+
+            targetProcessIds = [.. _routeTargetProcessIdsBuffer];
+        }
+
+        foreach (var targetProcessId in targetProcessIds)
+        {
+            QueueRouteWrite(targetProcessId, flow, normalizedDeviceId);
+        }
+    }
+
+    private void QueueRouteWrite(int processId, AudioDeviceFlow flow, string deviceId)
+    {
+        if (processId <= 0 || _disposed || !TryMarkRouteWriteAsQueued(processId, flow, deviceId))
         {
             return;
         }
 
+        ThreadPool.UnsafeQueueUserWorkItem(
+            static state =>
+            {
+                state.Service.ExecuteQueuedRouteWrite(state.ProcessId, state.Flow, state.DeviceId);
+            },
+            new RouteWriteWorkItem(this, processId, flow, deviceId),
+            preferLocal: false);
+    }
+
+    private bool TryMarkRouteWriteAsQueued(int processId, AudioDeviceFlow flow, string deviceId)
+    {
         lock (_syncRoot)
         {
             if (!_deviceRouteCache.TryGetValue(processId, out var route))
             {
-                route = new DeviceRouteCacheEntry();
-                _deviceRouteCache[processId] = route;
+                return false;
             }
-
-            route.LastUpdatedUtc = DateTime.UtcNow;
 
             if (flow == AudioDeviceFlow.Render)
             {
-                route.RenderDeviceId = normalizedDeviceId;
-
-                if (_appsByProcessId.TryGetValue(processId, out var model))
+                if (!string.Equals(route.RenderDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
                 {
-                    model.PreferredRenderDeviceId = normalizedDeviceId;
+                    return false;
                 }
+
+                if (route.IsRenderWriteQueued)
+                {
+                    return false;
+                }
+
+                route.IsRenderWriteQueued = true;
+                return true;
             }
-            else
+
+            if (!string.Equals(route.CaptureDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
             {
-                route.CaptureDeviceId = normalizedDeviceId;
+                return false;
+            }
 
-                if (_appsByProcessId.TryGetValue(processId, out var model))
+            if (route.IsCaptureWriteQueued)
+            {
+                return false;
+            }
+
+            route.IsCaptureWriteQueued = true;
+            return true;
+        }
+    }
+
+    private void ClearRouteWriteQueuedFlag(int processId, AudioDeviceFlow flow, string deviceId)
+    {
+        lock (_syncRoot)
+        {
+            if (!_deviceRouteCache.TryGetValue(processId, out var route))
+            {
+                return;
+            }
+
+            if (flow == AudioDeviceFlow.Render)
+            {
+                if (string.Equals(route.RenderDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
                 {
-                    model.PreferredCaptureDeviceId = normalizedDeviceId;
+                    route.IsRenderWriteQueued = false;
                 }
             }
+            else if (string.Equals(route.CaptureDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+            {
+                route.IsCaptureWriteQueued = false;
+            }
+        }
+    }
+
+    private void QueueRouteWriteAfterDelay(int processId, AudioDeviceFlow flow, string deviceId, TimeSpan delay)
+    {
+        _ = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    if (delay > TimeSpan.Zero)
+                    {
+                        await Task.Delay(delay).ConfigureAwait(false);
+                    }
+                }
+                catch
+                {
+                    return;
+                }
+
+                QueueRouteWrite(processId, flow, deviceId);
+            });
+    }
+
+    private void ExecuteQueuedRouteWrite(int processId, AudioDeviceFlow flow, string deviceId)
+    {
+        try
+        {
+            if (_disposed || processId <= 0)
+            {
+                return;
+            }
+
+            RouteLog($"ExecuteQueuedRouteWrite: pid={processId} flow={flow} deviceId='{deviceId}'");
+            var now = DateTime.UtcNow;
+            var skipWriteForCooldown = false;
+            var cooldownRetryDelay = TimeSpan.Zero;
+
+            lock (_syncRoot)
+            {
+                if (!_deviceRouteCache.TryGetValue(processId, out var route))
+                {
+                    return;
+                }
+
+                if (flow == AudioDeviceFlow.Render)
+                {
+                    if (!string.Equals(route.RenderDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    if (route.LastRenderWriteAttemptUtc != DateTime.MinValue)
+                    {
+                        var elapsed = now - route.LastRenderWriteAttemptUtc;
+                        if (elapsed < RouteWriteMinInterval)
+                        {
+                            skipWriteForCooldown = true;
+                            cooldownRetryDelay = RouteWriteMinInterval - elapsed;
+                        }
+                    }
+                }
+                else
+                {
+                    if (!string.Equals(route.CaptureDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    if (route.LastCaptureWriteAttemptUtc != DateTime.MinValue)
+                    {
+                        var elapsed = now - route.LastCaptureWriteAttemptUtc;
+                        if (elapsed < RouteWriteMinInterval)
+                        {
+                            skipWriteForCooldown = true;
+                            cooldownRetryDelay = RouteWriteMinInterval - elapsed;
+                        }
+                    }
+                }
+            }
+
+            if (skipWriteForCooldown)
+            {
+                RouteLog($"ExecuteQueuedRouteWrite skipped: pid={processId} flow={flow} reason=cooldown");
+                QueueRouteWriteAfterDelay(processId, flow, deviceId, cooldownRetryDelay);
+                return;
+            }
+
+            var writeSucceeded = TrySetPersistedDefaultAudioEndpoint(processId, flow, deviceId);
+            RouteLog($"ExecuteQueuedRouteWrite result: pid={processId} succeeded={writeSucceeded}");
+            now = DateTime.UtcNow;
+
+            lock (_syncRoot)
+            {
+                if (!_deviceRouteCache.TryGetValue(processId, out var route))
+                {
+                    return;
+                }
+
+                if (flow == AudioDeviceFlow.Render)
+                {
+                    if (!string.Equals(route.RenderDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    route.LastRenderWriteAttemptUtc = now;
+                    route.LastUpdatedUtc = now;
+
+                    if (writeSucceeded)
+                    {
+                        route.IsRenderWritePending = false;
+                        route.RenderWriteFailureCount = 0;
+                    }
+                    else
+                    {
+                        route.RenderWriteFailureCount = Math.Min(route.RenderWriteFailureCount + 1, MaxPendingRouteWriteRetries);
+                        route.IsRenderWritePending = route.RenderWriteFailureCount < MaxPendingRouteWriteRetries;
+                    }
+                }
+                else
+                {
+                    if (!string.Equals(route.CaptureDeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    route.LastCaptureWriteAttemptUtc = now;
+                    route.LastUpdatedUtc = now;
+
+                    if (writeSucceeded)
+                    {
+                        route.IsCaptureWritePending = false;
+                        route.CaptureWriteFailureCount = 0;
+                    }
+                    else
+                    {
+                        route.CaptureWriteFailureCount = Math.Min(route.CaptureWriteFailureCount + 1, MaxPendingRouteWriteRetries);
+                        route.IsCaptureWritePending = route.CaptureWriteFailureCount < MaxPendingRouteWriteRetries;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            ClearRouteWriteQueuedFlag(processId, flow, deviceId);
+        }
+    }
+
+    private void ApplyUserPreferredDevice(
+        DeviceRouteCacheEntry route,
+        int processId,
+        AudioDeviceFlow flow,
+        string deviceId,
+        DateTime now)
+    {
+        route.LastUpdatedUtc = now;
+
+        if (flow == AudioDeviceFlow.Render)
+        {
+            route.RenderDeviceId = deviceId;
+            route.LastRenderUserSetUtc = now;
+            route.LastRenderWriteAttemptUtc = DateTime.MinValue;
+            route.RenderWriteFailureCount = 0;
+            route.IsRenderWritePending = true;
+            route.IsRenderWriteQueued = false;
+
+            if (_appsByProcessId.TryGetValue(processId, out var model))
+            {
+                model.PreferredRenderDeviceId = deviceId;
+            }
+        }
+        else
+        {
+            route.CaptureDeviceId = deviceId;
+            route.LastCaptureUserSetUtc = now;
+            route.LastCaptureWriteAttemptUtc = DateTime.MinValue;
+            route.CaptureWriteFailureCount = 0;
+            route.IsCaptureWritePending = true;
+            route.IsCaptureWriteQueued = false;
+
+            if (_appsByProcessId.TryGetValue(processId, out var model))
+            {
+                model.PreferredCaptureDeviceId = deviceId;
+            }
+        }
+    }
+
+    private void ApplyStoredAppRoutePreferences(int processId, DeviceRouteCacheEntry route, DateTime now)
+    {
+        var appRouteKey = ResolveAppRouteKey(processId);
+        if (appRouteKey.Length == 0 || !_routePreferencesByAppKey.TryGetValue(appRouteKey, out var preference))
+        {
+            return;
+        }
+
+        if (preference.HasRenderPreference
+            && !string.Equals(route.RenderDeviceId, preference.RenderDeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            route.RenderDeviceId = preference.RenderDeviceId;
+            route.LastRenderUserSetUtc = now;
+            route.LastRenderWriteAttemptUtc = DateTime.MinValue;
+            route.RenderWriteFailureCount = 0;
+            route.IsRenderWritePending = true;
+            route.IsRenderWriteQueued = false;
+        }
+
+        if (preference.HasCapturePreference
+            && !string.Equals(route.CaptureDeviceId, preference.CaptureDeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            route.CaptureDeviceId = preference.CaptureDeviceId;
+            route.LastCaptureUserSetUtc = now;
+            route.LastCaptureWriteAttemptUtc = DateTime.MinValue;
+            route.CaptureWriteFailureCount = 0;
+            route.IsCaptureWritePending = true;
+            route.IsCaptureWriteQueued = false;
+        }
+    }
+
+    private string ResolveAppRouteKey(int processId)
+    {
+        if (processId <= 0 || !_appsByProcessId.TryGetValue(processId, out var model))
+        {
+            return string.Empty;
+        }
+
+        return NormalizeAppRouteKey(model.AppName);
+    }
+
+    private static string NormalizeAppRouteKey(string? appName)
+    {
+        if (string.IsNullOrWhiteSpace(appName))
+        {
+            return string.Empty;
+        }
+
+        var normalized = appName.Trim();
+        return normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? normalized[..^4]
+            : normalized;
+    }
+
+    private static TimeSpan GetRouteWriteRetryDelay(int failureCount)
+    {
+        var exponent = Math.Clamp(failureCount - 1, 0, 3);
+        var multiplier = 1 << exponent;
+        return TimeSpan.FromMilliseconds(PendingRouteWriteRetryInterval.TotalMilliseconds * multiplier);
+    }
+
+    private DeviceRouteCacheEntry GetOrCreateRouteCacheEntry(int processId)
+    {
+        if (_deviceRouteCache.TryGetValue(processId, out var route))
+        {
+            return route;
+        }
+
+        route = new DeviceRouteCacheEntry();
+        _deviceRouteCache[processId] = route;
+        return route;
+    }
+
+    private bool TrySetPersistedDefaultAudioEndpoint(int processId, AudioDeviceFlow flow, string? deviceId)
+    {
+        lock (_audioPolicyConfigSyncRoot)
+        {
+            return _audioPolicyConfigBridge.TrySetPersistedDefaultAudioEndpoint(processId, flow, deviceId);
+        }
+    }
+
+    private bool TryGetPersistedDefaultAudioEndpoint(int processId, AudioDeviceFlow flow, out string deviceId)
+    {
+        lock (_audioPolicyConfigSyncRoot)
+        {
+            return _audioPolicyConfigBridge.TryGetPersistedDefaultAudioEndpoint(processId, flow, out deviceId);
         }
     }
 
@@ -687,12 +1248,14 @@ public sealed class AudioSessionService : IDisposable
             _currentCaptureDeviceId = SafeRead(() => defaultCaptureDevice.ID, string.Empty);
             _currentCaptureDeviceName = SafeRead(() => defaultCaptureDevice.FriendlyName, "No input device");
             _hasCaptureDevice = true;
+            _isDefaultCaptureMuted = SafeRead(() => defaultCaptureDevice.AudioEndpointVolume.Mute, false);
         }
         catch
         {
             _currentCaptureDeviceId = string.Empty;
             _currentCaptureDeviceName = "No input device";
             _hasCaptureDevice = false;
+            _isDefaultCaptureMuted = false;
         }
         finally
         {
@@ -717,11 +1280,31 @@ public sealed class AudioSessionService : IDisposable
     {
         foreach (var processId in visibleProcessIds)
         {
-            if (!_deviceRouteCache.TryGetValue(processId, out var route)
-                || now - route.LastUpdatedUtc >= DeviceRouteRefreshInterval)
+            var route = GetOrCreateRouteCacheEntry(processId);
+            ApplyStoredAppRoutePreferences(processId, route, now);
+
+            var shouldRetryRenderWrite = route.IsRenderWritePending
+                && route.RenderWriteFailureCount < MaxPendingRouteWriteRetries
+                && now - route.LastRenderWriteAttemptUtc >= GetRouteWriteRetryDelay(route.RenderWriteFailureCount);
+            if (shouldRetryRenderWrite)
             {
-                route = ReadDeviceRouteCacheEntry(processId, now);
-                _deviceRouteCache[processId] = route;
+                QueueRouteWrite(processId, AudioDeviceFlow.Render, route.RenderDeviceId);
+            }
+
+            var shouldRetryCaptureWrite = route.IsCaptureWritePending
+                && route.CaptureWriteFailureCount < MaxPendingRouteWriteRetries
+                && now - route.LastCaptureWriteAttemptUtc >= GetRouteWriteRetryDelay(route.CaptureWriteFailureCount);
+            if (shouldRetryCaptureWrite)
+            {
+                QueueRouteWrite(processId, AudioDeviceFlow.Capture, route.CaptureDeviceId);
+            }
+
+            var shouldRefreshReadback = !route.IsRenderWritePending
+                && !route.IsCaptureWritePending
+                && now - route.LastUpdatedUtc >= DeviceRouteRefreshInterval;
+            if (shouldRefreshReadback)
+            {
+                ReadDeviceRouteCacheEntry(processId, route, now);
             }
 
             if (_appsByProcessId.TryGetValue(processId, out var model))
@@ -732,24 +1315,39 @@ public sealed class AudioSessionService : IDisposable
         }
     }
 
-    private DeviceRouteCacheEntry ReadDeviceRouteCacheEntry(int processId, DateTime now)
+    private void ReadDeviceRouteCacheEntry(int processId, DeviceRouteCacheEntry route, DateTime now)
     {
-        var route = new DeviceRouteCacheEntry
+        if (TryGetPersistedDefaultAudioEndpoint(processId, AudioDeviceFlow.Render, out var renderDeviceId))
         {
-            LastUpdatedUtc = now,
-        };
+            var suppressEmptyReadback = string.IsNullOrEmpty(renderDeviceId)
+                && !string.IsNullOrEmpty(route.RenderDeviceId)
+                && now - route.LastRenderUserSetUtc < RouteReadbackGracePeriod;
 
-        if (_audioPolicyConfigBridge.TryGetPersistedDefaultAudioEndpoint(processId, AudioDeviceFlow.Render, out var renderDeviceId))
-        {
-            route.RenderDeviceId = renderDeviceId;
+            if (!suppressEmptyReadback)
+            {
+                route.RenderDeviceId = renderDeviceId;
+                route.IsRenderWritePending = false;
+                route.IsRenderWriteQueued = false;
+                route.RenderWriteFailureCount = 0;
+            }
         }
 
-        if (_audioPolicyConfigBridge.TryGetPersistedDefaultAudioEndpoint(processId, AudioDeviceFlow.Capture, out var captureDeviceId))
+        if (TryGetPersistedDefaultAudioEndpoint(processId, AudioDeviceFlow.Capture, out var captureDeviceId))
         {
-            route.CaptureDeviceId = captureDeviceId;
+            var suppressEmptyReadback = string.IsNullOrEmpty(captureDeviceId)
+                && !string.IsNullOrEmpty(route.CaptureDeviceId)
+                && now - route.LastCaptureUserSetUtc < RouteReadbackGracePeriod;
+
+            if (!suppressEmptyReadback)
+            {
+                route.CaptureDeviceId = captureDeviceId;
+                route.IsCaptureWritePending = false;
+                route.IsCaptureWriteQueued = false;
+                route.CaptureWriteFailureCount = 0;
+            }
         }
 
-        return route;
+        route.LastUpdatedUtc = now;
     }
 
     private IReadOnlyList<AudioDeviceOptionModel> CreateDeviceOptions(
@@ -848,6 +1446,11 @@ public sealed class AudioSessionService : IDisposable
             return cachedIcon;
         }
 
+        if (_iconCache.Count >= MaxIconCacheEntries)
+        {
+            _iconCache.Clear();
+        }
+
         var icon = TryExtractIcon(executablePath) ?? _defaultIcon;
         _iconCache[executablePath] = icon;
         return icon;
@@ -943,9 +1546,33 @@ public sealed class AudioSessionService : IDisposable
         return source.Contains(token, StringComparison.OrdinalIgnoreCase);
     }
 
+    private void OnDefaultPlaybackDeviceChanged()
+    {
+        lock (_syncRoot)
+        {
+            _defaultDeviceChanged = true;
+            _defaultDeviceChangeUtc = DateTime.UtcNow;
+            _deviceInventoryChanged = true;
+        }
+    }
+
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+    }
+
+    private static void RouteLog(string message)
+    {
+        try
+        {
+            var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
+            var logPath = Path.Combine(AppContext.BaseDirectory, "audiobit-route.log");
+            File.AppendAllText(logPath, line + Environment.NewLine);
+        }
+        catch
+        {
+            // Don't let logging failures break routing.
+        }
     }
 
     private sealed class SessionGroup
@@ -982,8 +1609,45 @@ public sealed class AudioSessionService : IDisposable
 
         public string CaptureDeviceId { get; set; } = string.Empty;
 
+        public bool IsRenderWritePending { get; set; }
+
+        public bool IsCaptureWritePending { get; set; }
+
+        public bool IsRenderWriteQueued { get; set; }
+
+        public bool IsCaptureWriteQueued { get; set; }
+
+        public DateTime LastRenderWriteAttemptUtc { get; set; } = DateTime.MinValue;
+
+        public DateTime LastCaptureWriteAttemptUtc { get; set; } = DateTime.MinValue;
+
+        public int RenderWriteFailureCount { get; set; }
+
+        public int CaptureWriteFailureCount { get; set; }
+
+        public DateTime LastRenderUserSetUtc { get; set; } = DateTime.MinValue;
+
+        public DateTime LastCaptureUserSetUtc { get; set; } = DateTime.MinValue;
+
         public DateTime LastUpdatedUtc { get; set; }
     }
+
+    private sealed class AppRoutePreference
+    {
+        public bool HasRenderPreference { get; set; }
+
+        public string RenderDeviceId { get; set; } = string.Empty;
+
+        public bool HasCapturePreference { get; set; }
+
+        public string CaptureDeviceId { get; set; } = string.Empty;
+    }
+
+    private readonly record struct RouteWriteWorkItem(
+        AudioSessionService Service,
+        int ProcessId,
+        AudioDeviceFlow Flow,
+        string DeviceId);
 
     private sealed class EndpointNotificationClient : IMMNotificationClient
     {
@@ -1024,6 +1688,43 @@ public sealed class AudioSessionService : IDisposable
         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key)
         {
             _onDeviceInventoryChanged();
+        }
+    }
+
+    private sealed class AppAudioModelSortComparer : IComparer<AppAudioModel>
+    {
+        public static readonly AppAudioModelSortComparer Instance = new();
+
+        public int Compare(AppAudioModel? x, AppAudioModel? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return 0;
+            }
+
+            if (x is null)
+            {
+                return -1;
+            }
+
+            if (y is null)
+            {
+                return 1;
+            }
+
+            var priorityComparison = GetMixerPriority(x.AppName).CompareTo(GetMixerPriority(y.AppName));
+            if (priorityComparison != 0)
+            {
+                return priorityComparison;
+            }
+
+            var nameComparison = StringComparer.OrdinalIgnoreCase.Compare(x.AppName, y.AppName);
+            if (nameComparison != 0)
+            {
+                return nameComparison;
+            }
+
+            return x.ProcessId.CompareTo(y.ProcessId);
         }
     }
 }

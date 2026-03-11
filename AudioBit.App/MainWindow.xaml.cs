@@ -55,6 +55,7 @@ public partial class MainWindow : Window
         Closing += MainWindowOnClosing;
         Closed += MainWindowOnClosed;
         PreviewKeyDown += MainWindowOnPreviewKeyDown;
+        PreviewMouseDown += MainWindowOnPreviewMouseDown;
         AddHandler(UIElement.PreviewMouseWheelEvent, _closeComboBoxesOnMouseWheelHandler, true);
         AddHandler(ScrollViewer.ScrollChangedEvent, _closeComboBoxesOnScrollChangedHandler, true);
     }
@@ -95,6 +96,7 @@ public partial class MainWindow : Window
         _viewModel.Start();
         ApplyRoundedWindowRegion();
         ApplyRoundedVisualClips();
+        UpdateOverlayAnchors();
 
         if (_viewModel.ConsumeStartMinimized())
         {
@@ -111,6 +113,7 @@ public partial class MainWindow : Window
 
         ApplyRoundedWindowRegion();
         ApplyRoundedVisualClips();
+        UpdateOverlayAnchors();
     }
 
     private void MainWindowOnStateChanged(object? sender, EventArgs e)
@@ -149,6 +152,7 @@ public partial class MainWindow : Window
         _globalHotKeyService.Pressed -= GlobalHotKeyServiceOnPressed;
         _globalHotKeyService.Dispose();
         PreviewKeyDown -= MainWindowOnPreviewKeyDown;
+        PreviewMouseDown -= MainWindowOnPreviewMouseDown;
         RemoveHandler(UIElement.PreviewMouseWheelEvent, _closeComboBoxesOnMouseWheelHandler);
         RemoveHandler(ScrollViewer.ScrollChangedEvent, _closeComboBoxesOnScrollChangedHandler);
     }
@@ -252,6 +256,67 @@ public partial class MainWindow : Window
         }
     }
 
+    private void MainWindowOnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        var isDeviceInfoVisible = _viewModel.IsRemoteDeviceInfoPanelVisible;
+        if (!isDeviceInfoVisible)
+        {
+            return;
+        }
+
+        if (e.OriginalSource is not DependencyObject source)
+        {
+            if (isDeviceInfoVisible)
+            {
+                _viewModel.CloseRemoteDeviceInfoPanel();
+            }
+
+            return;
+        }
+
+        var isInsideDeviceInfo = isDeviceInfoVisible
+            && (IsDescendantOf(source, RemoteDeviceInfoButton) || IsDescendantOf(source, RemoteDeviceInfoPanel));
+        if (isInsideDeviceInfo)
+        {
+            return;
+        }
+
+        if (isDeviceInfoVisible)
+        {
+            _viewModel.CloseRemoteDeviceInfoPanel();
+        }
+    }
+
+    private void RemoteDeviceInfoTrigger_OnPreviewMouseEnter(object sender, MouseEventArgs e)
+    {
+        _viewModel.SetRemoteDeviceInfoPanelHover(true);
+    }
+
+    private void RemoteDeviceInfoTrigger_OnPreviewMouseLeave(object sender, MouseEventArgs e)
+    {
+        if (RemoteDeviceInfoPanel.IsMouseOver)
+        {
+            return;
+        }
+
+        _viewModel.SetRemoteDeviceInfoPanelHover(false);
+    }
+
+    private void RemoteDeviceInfoPanel_OnMouseEnter(object sender, MouseEventArgs e)
+    {
+        _viewModel.SetRemoteDeviceInfoPanelHover(true);
+    }
+
+    private void RemoteDeviceInfoPanel_OnMouseLeave(object sender, MouseEventArgs e)
+    {
+        if (RemoteDeviceInfoButton.IsMouseOver)
+        {
+            return;
+        }
+
+        _viewModel.SetRemoteDeviceInfoPanelHover(false);
+    }
+
     private void TryBeginWindowDrag(MouseButtonEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed)
@@ -274,6 +339,19 @@ public partial class MainWindow : Window
         for (DependencyObject? current = source; current is not null; current = GetParent(current))
         {
             if (current is T)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsDescendantOf(DependencyObject source, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = source; current is not null; current = GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
             {
                 return true;
             }
@@ -310,6 +388,107 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainViewModel.MicMuteHotKey))
         {
             RefreshHotKeyRegistration();
+            return;
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.IsAnyOverlayVisible)
+            || e.PropertyName == nameof(MainViewModel.IsRemoteQrPanelVisible)
+            || e.PropertyName == nameof(MainViewModel.IsProfilesTabSelected)
+            || e.PropertyName == nameof(MainViewModel.IsSettingsTabSelected))
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(UpdateOverlayAnchors));
+        }
+    }
+
+    private void UpdateOverlayAnchors()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        if (!_viewModel.IsAnyOverlayVisible)
+        {
+            ResetOverlayShift();
+            return;
+        }
+
+        if (OverlayLayer is null)
+        {
+            ResetOverlayShift();
+            return;
+        }
+
+        var anchor = GetOverlayAnchor();
+        if (anchor is null || anchor.ActualWidth <= 0 || anchor.ActualHeight <= 0)
+        {
+            ResetOverlayShift();
+            return;
+        }
+
+        var anchorCenter = anchor.TranslatePoint(
+            new Point(anchor.ActualWidth / 2.0, anchor.ActualHeight / 2.0),
+            OverlayLayer);
+
+        ApplyOverlayShift(CalibrateOverlayHost, CalibrateOverlayShift, anchorCenter);
+        ApplyOverlayShift(SavedOverlayHost, SavedOverlayShift, anchorCenter);
+    }
+
+    private FrameworkElement? GetOverlayAnchor()
+    {
+        if (RemoteQrButtonCompact is not null
+            && RemoteQrButtonCompact.IsVisible
+            && RemoteQrButtonCompact.ActualWidth > 0
+            && RemoteQrButtonCompact.ActualHeight > 0)
+        {
+            return RemoteQrButtonCompact;
+        }
+
+        if (RemoteQrButtonLarge is not null
+            && RemoteQrButtonLarge.IsVisible
+            && RemoteQrButtonLarge.ActualWidth > 0
+            && RemoteQrButtonLarge.ActualHeight > 0)
+        {
+            return RemoteQrButtonLarge;
+        }
+
+        return null;
+    }
+
+    private void ApplyOverlayShift(FrameworkElement? host, TranslateTransform? shift, Point anchorCenter)
+    {
+        if (host is null || shift is null || OverlayLayer is null)
+        {
+            return;
+        }
+
+        if (host.ActualWidth <= 0 || host.ActualHeight <= 0)
+        {
+            shift.X = 0;
+            shift.Y = 0;
+            return;
+        }
+
+        var hostCenter = host.TranslatePoint(
+            new Point(host.ActualWidth / 2.0, host.ActualHeight / 2.0),
+            OverlayLayer);
+
+        shift.X = anchorCenter.X - hostCenter.X;
+        shift.Y = anchorCenter.Y - hostCenter.Y;
+    }
+
+    private void ResetOverlayShift()
+    {
+        if (CalibrateOverlayShift is not null)
+        {
+            CalibrateOverlayShift.X = 0;
+            CalibrateOverlayShift.Y = 0;
+        }
+
+        if (SavedOverlayShift is not null)
+        {
+            SavedOverlayShift.X = 0;
+            SavedOverlayShift.Y = 0;
         }
     }
 
@@ -670,7 +849,6 @@ public partial class MainWindow : Window
 
     private void ApplyRoundedVisualClips()
     {
-        ApplyRoundedClip(ShellClipHost, 28);
         ApplyRoundedClip(CalibrateOverlayHost, 24);
         ApplyRoundedClip(SavedOverlayHost, 24);
     }

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace AudioBit.Core;
@@ -22,11 +24,21 @@ internal sealed class AudioPolicyConfigBridge
         PolicyConfigRole.Communications,
     ];
 
+    private static readonly object FactoryLock = new();
+    private static IAudioPolicyConfigFactory? _cachedFactory;
+    private static bool _factoryInitialized;
+
     public bool TryGetPersistedDefaultAudioEndpoint(int processId, AudioDeviceFlow flow, out string deviceId)
     {
         deviceId = string.Empty;
 
-        if (processId <= 0 || !TryGetFactory(out var factory))
+        if (processId <= 0)
+        {
+            return false;
+        }
+
+        var factory = GetOrCreateFactory();
+        if (factory is null)
         {
             return false;
         }
@@ -57,42 +69,74 @@ internal sealed class AudioPolicyConfigBridge
 
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            Log($"GET exception: pid={processId} flow={flow} error={ex.Message}");
+            InvalidateFactory();
             return false;
         }
     }
 
     public bool TrySetPersistedDefaultAudioEndpoint(int processId, AudioDeviceFlow flow, string? deviceId)
     {
-        if (processId <= 0 || !TryGetFactory(out var factory))
+        if (processId <= 0)
         {
+            Log($"SET skipped: invalid processId={processId}");
             return false;
         }
 
-        using var endpointString = WinRtString.Create(ToPersistedDeviceId(deviceId, flow));
+        var factory = GetOrCreateFactory();
+        if (factory is null)
+        {
+            Log($"SET failed: AudioPolicyConfig factory unavailable (pid={processId}, flow={flow})");
+            return false;
+        }
 
         try
         {
             var dataFlow = flow == AudioDeviceFlow.Render ? PolicyConfigDataFlow.Render : PolicyConfigDataFlow.Capture;
-            var anySucceeded = false;
-
-            foreach (var role in PersistedEndpointRoles)
+            foreach (var candidate in EnumeratePersistedDeviceIdCandidates(deviceId, flow))
             {
-                if (factory.SetPersistedDefaultAudioEndpoint(
+                Log($"SET trying: pid={processId} flow={flow} candidate='{candidate}'");
+
+                using var endpointString = WinRtString.Create(candidate);
+                var roleResults = new List<(PolicyConfigRole Role, uint Hr)>();
+
+                foreach (var role in PersistedEndpointRoles)
+                {
+                    var hr = factory.SetPersistedDefaultAudioEndpoint(
                         processId,
                         dataFlow,
                         role,
-                        endpointString.Handle) == 0)
+                        endpointString.Handle);
+
+                    roleResults.Add((role, hr));
+                }
+
+                var allSucceeded = roleResults.TrueForAll(r => r.Hr == 0);
+                var anySucceeded = roleResults.Exists(r => r.Hr == 0);
+
+                foreach (var (role, hr) in roleResults)
                 {
-                    anySucceeded = true;
+                    Log($"SET role={role} hr=0x{hr:X8} pid={processId} candidate='{candidate}'");
+                }
+
+                if (anySucceeded)
+                {
+                    // Verify the write by reading back immediately.
+                    var verified = TryGetPersistedDefaultAudioEndpoint(processId, flow, out var readbackId);
+                    Log($"SET verify: pid={processId} readback='{readbackId}' verified={verified} allRolesOk={allSucceeded}");
+                    return true;
                 }
             }
 
-            return anySucceeded;
+            Log($"SET failed: no candidate succeeded (pid={processId}, flow={flow}, deviceId='{deviceId}')");
+            return false;
         }
-        catch
+        catch (Exception ex)
         {
+            Log($"SET exception: pid={processId} flow={flow} deviceId='{deviceId}' error={ex.Message}");
+            InvalidateFactory();
             return false;
         }
     }
@@ -138,6 +182,25 @@ internal sealed class AudioPolicyConfigBridge
         return $"{MmDeviceIdPrefix}{deviceId}#{GetInterfaceClass(flow)}";
     }
 
+    private static IEnumerable<string> EnumeratePersistedDeviceIdCandidates(string? deviceId, AudioDeviceFlow flow)
+    {
+        var normalized = string.IsNullOrWhiteSpace(deviceId) ? string.Empty : deviceId.Trim();
+        if (normalized.Length == 0)
+        {
+            yield return string.Empty;
+            yield break;
+        }
+
+        if (normalized.StartsWith(MmDeviceIdPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return normalized;
+            yield break;
+        }
+
+        yield return ToPersistedDeviceId(normalized, flow);
+        yield return normalized;
+    }
+
     private static string GetInterfaceClass(AudioDeviceFlow flow)
     {
         return flow == AudioDeviceFlow.Render
@@ -145,30 +208,51 @@ internal sealed class AudioPolicyConfigBridge
             : CaptureDeviceInterfaceClass;
     }
 
-    private static bool TryGetFactory(out IAudioPolicyConfigFactory factory)
+    private static IAudioPolicyConfigFactory? GetOrCreateFactory()
     {
-        foreach (var iid in SupportedFactoryIids)
+        lock (FactoryLock)
         {
-            try
+            if (_factoryInitialized && _cachedFactory is not null)
             {
-                object factoryObject;
-                var requestedIid = iid;
-                CombaseInterop.RoGetActivationFactory(PolicyConfigRuntimeClass, ref requestedIid, out factoryObject);
-
-                factory = iid == SupportedFactoryIids[0]
-                    ? new AudioPolicyConfigFactoryShim((IAudioPolicyConfigFactoryVariantFor21H2)factoryObject)
-                    : new AudioPolicyConfigFactoryShim((IAudioPolicyConfigFactoryDownlevel)factoryObject);
-
-                return true;
+                return _cachedFactory;
             }
-            catch
+
+            foreach (var iid in SupportedFactoryIids)
             {
-                // Try the next known factory layout.
+                try
+                {
+                    var requestedIid = iid;
+                    using var classIdString = WinRtString.Create(PolicyConfigRuntimeClass);
+                    CombaseInterop.RoGetActivationFactory(classIdString.Handle, ref requestedIid, out var factoryObject);
+
+                    _cachedFactory = iid == SupportedFactoryIids[0]
+                        ? new AudioPolicyConfigFactoryShim((IAudioPolicyConfigFactoryVariantFor21H2)factoryObject)
+                        : new AudioPolicyConfigFactoryShim((IAudioPolicyConfigFactoryDownlevel)factoryObject);
+
+                    _factoryInitialized = true;
+                    Log($"AudioPolicyConfig factory created (IID={iid})");
+                    return _cachedFactory;
+                }
+                catch (Exception ex)
+                {
+                    Log($"Factory activation failed for IID={iid}: {ex.Message}");
+                }
             }
+
+            _factoryInitialized = true;
+            _cachedFactory = null;
+            Log("AudioPolicyConfig factory unavailable on this system.");
+            return null;
         }
+    }
 
-        factory = NullAudioPolicyConfigFactory.Instance;
-        return false;
+    private static void InvalidateFactory()
+    {
+        lock (FactoryLock)
+        {
+            _cachedFactory = null;
+            _factoryInitialized = false;
+        }
     }
 
     private enum PolicyConfigDataFlow
@@ -239,7 +323,9 @@ internal sealed class AudioPolicyConfigBridge
 
         public uint GetPersistedDefaultAudioEndpoint(int processId, PolicyConfigDataFlow flow, PolicyConfigRole role, out string deviceId)
         {
-            return _factory.GetPersistedDefaultAudioEndpoint(processId, flow, role, out deviceId);
+            var hr = _factory.GetPersistedDefaultAudioEndpoint(processId, flow, role, out var hstringPtr);
+            deviceId = HStringToString(hstringPtr);
+            return hr;
         }
     }
 
@@ -259,7 +345,9 @@ internal sealed class AudioPolicyConfigBridge
 
         public uint GetPersistedDefaultAudioEndpoint(int processId, PolicyConfigDataFlow flow, PolicyConfigRole role, out string deviceId)
         {
-            return _factory.GetPersistedDefaultAudioEndpoint(processId, flow, role, out deviceId);
+            var hr = _factory.GetPersistedDefaultAudioEndpoint(processId, flow, role, out var hstringPtr);
+            deviceId = HStringToString(hstringPtr);
+            return hr;
         }
     }
 
@@ -279,10 +367,20 @@ internal sealed class AudioPolicyConfigBridge
         }
     }
 
+    // .NET 8 dropped InterfaceIsIInspectable.  Use InterfaceIsIUnknown and add
+    // three IInspectable stubs (GetIids, GetRuntimeClassName, GetTrustLevel)
+    // before the existing method stubs so the vtable stays aligned.
+
     [Guid("ab3d4648-e242-459f-b02f-541c70306324")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIInspectable)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IAudioPolicyConfigFactoryVariantFor21H2
     {
+        // IInspectable
+        int GetIids();
+        int GetRuntimeClassName();
+        int GetTrustLevel();
+
+        // AudioPolicyConfig stubs
         int AddContextVolumeChange();
         int RemoveContextVolumeChanged();
         int AddRingerVibrateStateChanged();
@@ -311,16 +409,22 @@ internal sealed class AudioPolicyConfigBridge
             int processId,
             PolicyConfigDataFlow flow,
             PolicyConfigRole role,
-            [Out, MarshalAs(UnmanagedType.HString)] out string deviceId);
+            out IntPtr deviceId);
 
         [PreserveSig]
         uint ClearAllPersistedApplicationDefaultEndpoints();
     }
 
     [Guid("2a59116d-6c4f-45e0-a74f-707e3fef9258")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIInspectable)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IAudioPolicyConfigFactoryDownlevel
     {
+        // IInspectable
+        int GetIids();
+        int GetRuntimeClassName();
+        int GetTrustLevel();
+
+        // AudioPolicyConfig stubs
         int AddContextVolumeChange();
         int RemoveContextVolumeChanged();
         int AddRingerVibrateStateChanged();
@@ -349,7 +453,7 @@ internal sealed class AudioPolicyConfigBridge
             int processId,
             PolicyConfigDataFlow flow,
             PolicyConfigRole role,
-            [Out, MarshalAs(UnmanagedType.HString)] out string deviceId);
+            out IntPtr deviceId);
 
         [PreserveSig]
         uint ClearAllPersistedApplicationDefaultEndpoints();
@@ -359,10 +463,29 @@ internal sealed class AudioPolicyConfigBridge
     {
         [DllImport("combase.dll", PreserveSig = false)]
         public static extern void RoGetActivationFactory(
-            [MarshalAs(UnmanagedType.HString)] string activatableClassId,
+            IntPtr activatableClassId,
             ref Guid iid,
-            [MarshalAs(UnmanagedType.IInspectable)] out object factory);
+            [MarshalAs(UnmanagedType.IUnknown)] out object factory);
     }
+
+    private static string HStringToString(IntPtr hstring)
+    {
+        if (hstring == IntPtr.Zero)
+        {
+            return string.Empty;
+        }
+
+        var buffer = WindowsGetStringRawBuffer(hstring, out var length);
+        if (buffer == IntPtr.Zero || length == 0)
+        {
+            return string.Empty;
+        }
+
+        return Marshal.PtrToStringUni(buffer, (int)length) ?? string.Empty;
+    }
+
+    [DllImport("combase.dll")]
+    private static extern IntPtr WindowsGetStringRawBuffer(IntPtr hstring, out uint length);
 
     private readonly ref struct WinRtString
     {
@@ -395,5 +518,19 @@ internal sealed class AudioPolicyConfigBridge
 
         [DllImport("combase.dll")]
         private static extern int WindowsDeleteString(IntPtr hstring);
+    }
+
+    private static void Log(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
+        try
+        {
+            var logPath = Path.Combine(AppContext.BaseDirectory, "audiobit-route.log");
+            File.AppendAllText(logPath, line + Environment.NewLine);
+        }
+        catch
+        {
+            // Don't let logging failures break routing.
+        }
     }
 }

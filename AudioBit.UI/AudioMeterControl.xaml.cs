@@ -11,6 +11,9 @@ public partial class AudioMeterControl : UserControl
     private const double PeakAttackPerSecond = 9.5;
     private const double PeakReleasePerSecond = 4.4;
     private const double PulseReleasePerSecond = 3.6;
+    private const double BarAttackPerSecond = 18.0;
+    private const double BarReleasePerSecond = 9.0;
+    private const double DynamicBarThreshold = 0.003;
     private const double StopThreshold = 0.0025;
 
     public static readonly DependencyProperty PeakValueProperty = DependencyProperty.Register(
@@ -51,11 +54,15 @@ public partial class AudioMeterControl : UserControl
 
     private bool _hasAnimatedIn;
     private bool _isRendering;
+    private bool _hasDynamicBarEnergy;
     private long _lastRenderTimestamp;
+    private double _spectrumTime;
     private double _targetPeak;
     private double _displayPeak;
     private double _peakPulse;
     private double _lastSamplePeak;
+    private double[] _barFloors = Array.Empty<double>();
+    private double[] _barScales = Array.Empty<double>();
     private ScaleTransform[]? _meterTransforms;
 
     public AudioMeterControl()
@@ -111,9 +118,11 @@ public partial class AudioMeterControl : UserControl
         EnsureMeterTransforms();
 
         _hasAnimatedIn = true;
+        _spectrumTime = 0.0;
         _targetPeak = Math.Clamp(PeakValue, 0.0, 1.0);
         _displayPeak = _targetPeak;
         _lastSamplePeak = _targetPeak;
+        AdvanceSpectrum(1.0 / 60.0);
         RenderMeter();
         ApplyPerformanceModeVisuals();
 
@@ -171,9 +180,13 @@ public partial class AudioMeterControl : UserControl
         _lastRenderTimestamp = now;
 
         AdvanceEnvelope(frameSeconds);
+        AdvanceSpectrum(frameSeconds);
         RenderMeter();
 
-        if (_targetPeak <= StopThreshold && _displayPeak <= StopThreshold && _peakPulse <= StopThreshold)
+        if (_targetPeak <= StopThreshold
+            && _displayPeak <= StopThreshold
+            && _peakPulse <= StopThreshold
+            && !_hasDynamicBarEnergy)
         {
             StopRendering();
         }
@@ -193,6 +206,70 @@ public partial class AudioMeterControl : UserControl
         _peakPulse = MoveTowards(_peakPulse, 0.0, PulseReleasePerSecond * frameSeconds);
     }
 
+    private void AdvanceSpectrum(double frameSeconds)
+    {
+        EnsureMeterTransforms();
+        if (_meterTransforms is null)
+        {
+            return;
+        }
+
+        _spectrumTime += frameSeconds;
+        _hasDynamicBarEnergy = false;
+
+        for (var index = 0; index < _meterTransforms.Length; index++)
+        {
+            var position = index / Math.Max(1.0, _meterTransforms.Length - 1.0);
+            var centerWeight = 1.0 - (Math.Abs(position - 0.5) * 2.0);
+            var baseFloor = _barFloors[index];
+            var envelopeWeight = 0.46 + (_barBias[index] * 0.34) + (centerWeight * 0.18);
+            var transientWeight = 0.12 + (_barBias[index] * 0.10) + (centerWeight * 0.28);
+            var envelope = _displayPeak * envelopeWeight;
+            var transient = _peakPulse * transientWeight;
+            var energy = Math.Clamp(envelope + transient, 0.0, 1.0);
+            var targetScale = baseFloor + envelope + transient + ComputeOrganicMotion(index, position, centerWeight, energy);
+
+            if (_displayPeak <= StopThreshold && _peakPulse <= StopThreshold)
+            {
+                targetScale = baseFloor;
+            }
+
+            targetScale = Math.Clamp(targetScale, baseFloor, 1.0);
+
+            var response = _barScales[index] < targetScale
+                ? BarAttackPerSecond + (_barBias[index] * 6.0) + (centerWeight * 3.0)
+                : BarReleasePerSecond + (_barBias[index] * 4.0);
+
+            _barScales[index] = DampedLerp(_barScales[index], targetScale, response, frameSeconds);
+
+            if (_barScales[index] > baseFloor + DynamicBarThreshold)
+            {
+                _hasDynamicBarEnergy = true;
+            }
+        }
+    }
+
+    private double ComputeOrganicMotion(int index, double position, double centerWeight, double energy)
+    {
+        if (energy <= StopThreshold)
+        {
+            return 0.0;
+        }
+
+        var phase = (_barBias[index] * 2.2) + (index * 0.44);
+        var wave = Math.Sin((_spectrumTime * (4.0 + (centerWeight * 1.2))) - (position * Math.PI * 3.5) + phase);
+        var flutter = Math.Sin((_spectrumTime * (8.1 + (_barBias[index] * 1.8))) + (phase * 1.6));
+        var jitter = Math.Sin((_spectrumTime * (11.8 + (index * 0.13))) + (phase * 2.4));
+        var blend =
+            (Math.Max(0.0, wave) * 0.58)
+            + ((flutter + 1.0) * 0.22)
+            + ((jitter + 1.0) * 0.10);
+        var amplitude = (0.012 + (centerWeight * 0.022) + (_barBias[index] * 0.014))
+            * (0.30 + (energy * 1.65));
+
+        return blend * amplitude;
+    }
+
     private void RenderMeter()
     {
         EnsureMeterTransforms();
@@ -203,19 +280,7 @@ public partial class AudioMeterControl : UserControl
 
         for (var index = 0; index < _meterTransforms.Length; index++)
         {
-            var position = index / Math.Max(1.0, _meterTransforms.Length - 1.0);
-            var centerWeight = 1.0 - (Math.Abs(position - 0.5) * 2.0);
-            var baseFloor = 0.04 + (_barBias[index] * 0.015);
-            var envelopeWeight = 0.46 + (_barBias[index] * 0.34) + (centerWeight * 0.18);
-            var transientWeight = 0.12 + (_barBias[index] * 0.10) + (centerWeight * 0.28);
-            var targetScale = baseFloor + (_displayPeak * envelopeWeight) + (_peakPulse * transientWeight);
-
-            if (_displayPeak <= StopThreshold && _peakPulse <= StopThreshold)
-            {
-                targetScale = baseFloor;
-            }
-
-            _meterTransforms[index].ScaleY = Math.Clamp(targetScale, baseFloor, 1.0);
+            _meterTransforms[index].ScaleY = _barScales[index];
         }
     }
 
@@ -254,6 +319,16 @@ public partial class AudioMeterControl : UserControl
             BarScale13,
             BarScale14,
         ];
+
+        _barFloors = new double[_meterTransforms.Length];
+        _barScales = new double[_meterTransforms.Length];
+
+        for (var index = 0; index < _meterTransforms.Length; index++)
+        {
+            var baseFloor = 0.04 + (_barBias[index] * 0.015);
+            _barFloors[index] = baseFloor;
+            _barScales[index] = baseFloor;
+        }
     }
 
     private void EnsureRendering()
@@ -290,6 +365,17 @@ public partial class AudioMeterControl : UserControl
         return Math.Max(target, current - amount);
     }
 
+    private static double DampedLerp(double current, double target, double rate, double frameSeconds)
+    {
+        if (Math.Abs(target - current) <= double.Epsilon)
+        {
+            return target;
+        }
+
+        var blend = 1.0 - Math.Exp(-Math.Max(0.0, rate) * frameSeconds);
+        return current + ((target - current) * blend);
+    }
+
     private void ApplyPerformanceModeVisuals()
     {
         ResetCardHoverVisuals();
@@ -308,9 +394,10 @@ public partial class AudioMeterControl : UserControl
             return;
         }
 
+        AdvanceSpectrum(1.0 / 60.0);
         RenderMeter();
 
-        if (_targetPeak > StopThreshold || _displayPeak > StopThreshold || _peakPulse > StopThreshold)
+        if (_targetPeak > StopThreshold || _displayPeak > StopThreshold || _peakPulse > StopThreshold || _hasDynamicBarEnergy)
         {
             EnsureRendering();
         }

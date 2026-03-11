@@ -22,8 +22,8 @@ internal enum InstallerStep
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private const int WindowCornerRadius = 28;
-    private const double ShellClipCornerRadius = 21;
+    private const int WindowCornerRadius = 34;
+    private const double ShellClipCornerRadius = 30;
     private const double ShellClipInset = 1.0;
 
     private readonly InstallerEngine _installerEngine;
@@ -656,7 +656,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return ex switch
         {
             UnauthorizedAccessException => IsInstallMode
-                ? "Setup could not write to the selected install path."
+                ? "Setup hit a Windows file permission lock. Close other setup windows and retry."
                 : "Uninstall could not remove files from the selected path.",
             FileNotFoundException => IsInstallMode
                 ? "Setup payload is missing from the installer folder."

@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:infra="clr-namespace:AudioBit.Installer.Infrastructure"
         xmlns:local="clr-namespace:AudioBit.Installer"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         Title="{Binding ModeHeadline}"
@@ -11,7 +12,7 @@
         MinHeight="690"
         MaxWidth="356"
         MaxHeight="690"
-        Background="#0D0F16"
+        Background="#0B0717"
         FontFamily="Segoe UI"
         Foreground="#F4F2F8"
         ResizeMode="NoResize"
@@ -27,44 +28,55 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <local:ProgressToGridLengthConverter x:Key="ProgressToGridLengthConverter" />
 
-        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F4F2F8" />
-        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A7A8B7" />
-        <SolidColorBrush x:Key="TextMutedBrush" Color="#8B8D9E" />
-        <SolidColorBrush x:Key="AccentOrangeBrush" Color="#FF8D33" />
-        <SolidColorBrush x:Key="AccentOrangeBorderBrush" Color="#FFC38D" />
-        <SolidColorBrush x:Key="CardBorderBrush" Color="#434557" />
-        <SolidColorBrush x:Key="FooterBorderBrush" Color="#3A3B4D" />
-        <SolidColorBrush x:Key="ShellBorderBrush" Color="#3B3E51" />
-        <SolidColorBrush x:Key="ShellInnerBorderBrush" Color="#54586D" />
-        <SolidColorBrush x:Key="OptionBrush" Color="#2B2D39" />
-        <SolidColorBrush x:Key="OptionBorderBrush" Color="#4B4D61" />
-        <SolidColorBrush x:Key="OptionHoverBrush" Color="#353746" />
-        <SolidColorBrush x:Key="BadgeBrush" Color="#33231A" />
-        <SolidColorBrush x:Key="BadgeBorderBrush" Color="#6E492E" />
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F7EEF8" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#C2B0CD" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#9D89B1" />
+        <SolidColorBrush x:Key="AccentOrangeBrush" Color="#FF9C2F" />
+        <SolidColorBrush x:Key="AccentOrangeBorderBrush" Color="#FFD19E" />
+        <SolidColorBrush x:Key="CardBorderBrush" Color="#5A4577" />
+        <SolidColorBrush x:Key="FooterBorderBrush" Color="#5A4179" />
+        <SolidColorBrush x:Key="ShellBorderBrush" Color="#7D4E90" />
+        <SolidColorBrush x:Key="ShellInnerBorderBrush" Color="#5E3D7E" />
+        <SolidColorBrush x:Key="OptionBrush" Color="#261935" />
+        <SolidColorBrush x:Key="OptionBorderBrush" Color="#5A3A76" />
+        <SolidColorBrush x:Key="OptionHoverBrush" Color="#332147" />
+        <SolidColorBrush x:Key="BadgeBrush" Color="#351A27" />
+        <SolidColorBrush x:Key="BadgeBorderBrush" Color="#B75A2E" />
+        <SolidColorBrush x:Key="BackdropSparkBrush" Color="#7F4E66" />
+        <SolidColorBrush x:Key="PanelOverlayStrokeBrush" Color="#6E4A8E" />
+        <SolidColorBrush x:Key="FieldSurfaceBrush" Color="#261A34" />
+        <SolidColorBrush x:Key="StatusCardBrush" Color="#2D1730" />
+        <SolidColorBrush x:Key="ProgressTrackBrush" Color="#2A1937" />
+
+        <LinearGradientBrush x:Key="OuterBackdropBrush" StartPoint="0,0" EndPoint="0.95,1">
+            <GradientStop Offset="0" Color="#150C2A" />
+            <GradientStop Offset="0.52" Color="#1D1033" />
+            <GradientStop Offset="1" Color="#280E2D" />
+        </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="ShellBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Offset="0" Color="#2B2B39" />
-            <GradientStop Offset="1" Color="#191A24" />
+            <GradientStop Offset="0" Color="#231538" />
+            <GradientStop Offset="1" Color="#1A0F2D" />
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="TopBarBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Offset="0" Color="#343545" />
-            <GradientStop Offset="1" Color="#2A2B38" />
+            <GradientStop Offset="0" Color="#2E1E45" />
+            <GradientStop Offset="1" Color="#261A3B" />
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="BrandTileBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Offset="0" Color="#FF9B3E" />
-            <GradientStop Offset="1" Color="#F36D1E" />
+            <GradientStop Offset="0" Color="#FFA637" />
+            <GradientStop Offset="1" Color="#FF5C25" />
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="SoftCardBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Offset="0" Color="#323340" />
-            <GradientStop Offset="1" Color="#2D2E3B" />
+            <GradientStop Offset="0" Color="#2B1C3E" />
+            <GradientStop Offset="1" Color="#241733" />
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="FooterBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Offset="0" Color="#252632" />
-            <GradientStop Offset="1" Color="#21222D" />
+            <GradientStop Offset="0" Color="#2A1A3F" />
+            <GradientStop Offset="1" Color="#231537" />
         </LinearGradientBrush>
 
         <RadialGradientBrush x:Key="ShellGlowBrush"
@@ -72,20 +84,50 @@
                              GradientOrigin="0.5,0"
                              RadiusX="1"
                              RadiusY="0.62">
-            <GradientStop Offset="0" Color="#34FF9A3E" />
-            <GradientStop Offset="0.48" Color="#12FF9A3E" />
-            <GradientStop Offset="1" Color="#00FF9A3E" />
+            <GradientStop Offset="0" Color="#4DFF8240" />
+            <GradientStop Offset="0.48" Color="#16FF8240" />
+            <GradientStop Offset="1" Color="#00FF8240" />
+        </RadialGradientBrush>
+
+        <RadialGradientBrush x:Key="NebulaGlowTopBrush"
+                             Center="0.16,0.08"
+                             GradientOrigin="0.16,0.08"
+                             RadiusX="0.86"
+                             RadiusY="0.66">
+            <GradientStop Offset="0" Color="#44C36EFF" />
+            <GradientStop Offset="0.38" Color="#22905DFF" />
+            <GradientStop Offset="1" Color="#00905DFF" />
+        </RadialGradientBrush>
+
+        <RadialGradientBrush x:Key="NebulaGlowBottomBrush"
+                             Center="0.77,0.86"
+                             GradientOrigin="0.77,0.86"
+                             RadiusX="0.86"
+                             RadiusY="0.72">
+            <GradientStop Offset="0" Color="#6AF77B3D" />
+            <GradientStop Offset="0.44" Color="#35E95A4A" />
+            <GradientStop Offset="1" Color="#00E95A4A" />
         </RadialGradientBrush>
 
         <LinearGradientBrush x:Key="PrimaryButtonBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Offset="0" Color="#FF8D33" />
-            <GradientStop Offset="1" Color="#F07A1F" />
+            <GradientStop Offset="0" Color="#FFA437" />
+            <GradientStop Offset="0.48" Color="#FF7B2A" />
+            <GradientStop Offset="1" Color="#FF4E25" />
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="PrimaryButtonHoverBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Offset="0" Color="#FF9947" />
-            <GradientStop Offset="1" Color="#F5862D" />
+            <GradientStop Offset="0" Color="#FFB24D" />
+            <GradientStop Offset="0.48" Color="#FF8E35" />
+            <GradientStop Offset="1" Color="#FF5F30" />
         </LinearGradientBrush>
+
+        <Style x:Key="StepBadgeStyle" TargetType="Border">
+            <Setter Property="Padding" Value="14,5" />
+            <Setter Property="Background" Value="{StaticResource BadgeBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BadgeBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="999" />
+        </Style>
 
         <Style x:Key="TrafficButtonStyle" TargetType="{x:Type Button}">
             <Setter Property="Width" Value="24" />
@@ -129,12 +171,13 @@
         </Style>
 
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="50" />
+            <Setter Property="Height" Value="54" />
             <Setter Property="Padding" Value="20,0" />
             <Setter Property="Foreground" Value="#FFF8F3EE" />
             <Setter Property="Background" Value="{StaticResource PrimaryButtonBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource AccentOrangeBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="17" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -145,7 +188,14 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="16">
+                                CornerRadius="27">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="14"
+                                                  Direction="90"
+                                                  Opacity="0.5"
+                                                  ShadowDepth="0"
+                                                  Color="#9CFF6B2A" />
+                            </Border.Effect>
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
@@ -166,12 +216,13 @@
         </Style>
 
         <Style x:Key="SecondaryButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="50" />
+            <Setter Property="Height" Value="54" />
             <Setter Property="Padding" Value="18,0" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
             <Setter Property="Background" Value="{StaticResource OptionBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource OptionBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="16" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -182,7 +233,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="16">
+                                CornerRadius="27">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
@@ -206,7 +257,7 @@
             <Setter Property="Background" Value="{StaticResource SoftCardBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource OptionBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="22" />
+            <Setter Property="CornerRadius" Value="24" />
         </Style>
 
         <Style x:Key="PathTextBoxStyle" TargetType="TextBox">
@@ -231,20 +282,20 @@
                                 Background="{StaticResource OptionBrush}"
                                 BorderBrush="{StaticResource OptionBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="20">
+                                CornerRadius="22">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Grid Width="20"
-                                      Height="20"
+                                <Grid Width="22"
+                                      Height="22"
                                       VerticalAlignment="Top">
                                     <Border x:Name="CheckBoxBorder"
-                                            Background="#20161B24"
-                                            BorderBrush="#6B7088"
+                                            Background="#2A1D38"
+                                            BorderBrush="{StaticResource CardBorderBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="6" />
+                                            CornerRadius="7" />
                                     <Path x:Name="CheckMark"
                                           Margin="4"
                                           Data="M1,6 L4.2,9.2 L11,2.2"
@@ -268,9 +319,86 @@
                                 <Setter TargetName="CheckBoxBorder" Property="Background" Value="{StaticResource AccentOrangeBrush}" />
                                 <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{StaticResource AccentOrangeBrush}" />
                                 <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="RootBorder" Property="BorderBrush" Value="{StaticResource AccentOrangeBorderBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="RootBorder" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="InstallerScrollBarButtonStyle" TargetType="{x:Type RepeatButton}">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style x:Key="InstallerScrollThumbStyle" TargetType="{x:Type Thumb}">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border x:Name="ThumbBorder"
+                                Margin="2"
+                                Background="#9F6A4A9D"
+                                BorderBrush="#C58C56B2"
+                                BorderThickness="1"
+                                CornerRadius="999" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#C57A53B4" />
+                                <Setter TargetName="ThumbBorder" Property="BorderBrush" Value="#E8BC7FCC" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#DC8E4BAF" />
+                                <Setter TargetName="ThumbBorder" Property="BorderBrush" Value="#FFD699" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="InstallerScrollBarStyle" TargetType="{x:Type ScrollBar}">
+            <Setter Property="Width" Value="11" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                        <Grid Background="Transparent">
+                            <Border Margin="2,2,1,2"
+                                    Background="#2A1C39"
+                                    BorderBrush="#5B3F79"
+                                    BorderThickness="1"
+                                    CornerRadius="999" />
+                            <Track x:Name="PART_Track"
+                                   IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand"
+                                                  Style="{StaticResource InstallerScrollBarButtonStyle}" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource InstallerScrollThumbStyle}" />
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand"
+                                                  Style="{StaticResource InstallerScrollBarButtonStyle}" />
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter Property="Height" Value="11" />
+                                <Setter Property="Width" Value="Auto" />
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -281,13 +409,64 @@
 
     <Grid Background="Transparent"
           MouseLeftButtonDown="ShellBackground_OnMouseLeftButtonDown">
+        <Grid IsHitTestVisible="False">
+            <Rectangle Fill="{StaticResource OuterBackdropBrush}" />
+            <Rectangle Fill="{StaticResource NebulaGlowTopBrush}" />
+            <Rectangle Fill="{StaticResource NebulaGlowBottomBrush}" />
+            <Ellipse Width="8"
+                     Height="8"
+                     Margin="62,74,0,0"
+                     HorizontalAlignment="Left"
+                     VerticalAlignment="Top"
+                     Fill="{StaticResource BackdropSparkBrush}" />
+            <Ellipse Width="6"
+                     Height="6"
+                     Margin="300,94,0,0"
+                     HorizontalAlignment="Left"
+                     VerticalAlignment="Top"
+                     Fill="#8A8867A8" />
+            <Ellipse Width="7"
+                     Height="7"
+                     Margin="270,510,0,0"
+                     HorizontalAlignment="Left"
+                     VerticalAlignment="Top"
+                     Fill="#A0634C9D" />
+            <Ellipse Width="430"
+                     Height="260"
+                     Margin="-210,420,0,0"
+                     HorizontalAlignment="Left"
+                     VerticalAlignment="Top"
+                     Fill="#2BB56CF4" />
+            <Ellipse Width="500"
+                     Height="300"
+                     Margin="70,-140,0,0"
+                     HorizontalAlignment="Left"
+                     VerticalAlignment="Top"
+                     Fill="#1E7D56E8" />
+            <Path Margin="-34,548,-10,-76"
+                  Stroke="#38FF834A"
+                  StrokeThickness="2.3"
+                  Data="M-20,120 C130,20 250,220 420,92 560,10 660,112 760,84" />
+            <Path Margin="-92,500,-70,-30"
+                  Stroke="#24D572BD"
+                  StrokeThickness="1.6"
+                  Data="M-20,118 C100,58 240,170 360,122 520,58 620,120 760,86" />
+        </Grid>
+
         <Border x:Name="ShellBorder"
-                Margin="3"
+                Margin="8,14,8,14"
                 Background="{StaticResource ShellBackgroundBrush}"
                 BorderBrush="{StaticResource ShellBorderBrush}"
                 BorderThickness="1"
-                CornerRadius="25">
-                <Grid>
+                CornerRadius="34">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="34"
+                                  Direction="90"
+                                  Opacity="0.55"
+                                  ShadowDepth="18"
+                                  Color="#A01D0D28" />
+            </Border.Effect>
+            <Grid>
                     <Ellipse Width="290"
                              Height="170"
                              Margin="0,-102,0,0"
@@ -299,23 +478,31 @@
                     <Border Margin="2"
                             BorderBrush="{StaticResource ShellInnerBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="22">
+                            CornerRadius="31">
                         <Grid x:Name="ShellClipHost">
                             <Border Background="Transparent"
                                     MouseLeftButtonDown="ShellBackground_OnMouseLeftButtonDown" />
+                            <Border Margin="1"
+                                    BorderBrush="{StaticResource PanelOverlayStrokeBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="30"
+                                    Opacity="0.55"
+                                    IsHitTestVisible="False" />
 
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="88" />
+                                    <RowDefinition Height="96" />
                                     <RowDefinition Height="*" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <Border Grid.Row="0"
                                         Background="{StaticResource TopBarBackgroundBrush}"
-                                        CornerRadius="21,21,0,0"
+                                        BorderBrush="#573B73"
+                                        BorderThickness="0,0,0,1"
+                                        CornerRadius="30,30,0,0"
                                         PreviewMouseLeftButtonDown="TopBar_OnPreviewMouseLeftButtonDown">
-                        <Grid Margin="18,15,18,15">
+                        <Grid Margin="18,18,18,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -328,7 +515,7 @@
                                     Background="{StaticResource BrandTileBrush}"
                                     BorderBrush="{StaticResource AccentOrangeBorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="12">
+                                    CornerRadius="15">
                                 <Viewbox Width="30"
                                          Height="30"
                                          HorizontalAlignment="Center"
@@ -346,7 +533,7 @@
 
                             <StackPanel Grid.Column="1"
                                         VerticalAlignment="Center">
-                                <TextBlock FontSize="17"
+                                <TextBlock FontSize="18"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            Text="{Binding ModeHeadline}" />
@@ -362,8 +549,8 @@
                                         Orientation="Horizontal"
                                         VerticalAlignment="Top">
                                 <Button Margin="0,0,6,0"
-                                        Background="#2DCB5A"
-                                        BorderBrush="#1D9440"
+                                        Background="#5BEB73"
+                                        BorderBrush="#40B155"
                                         Click="MinimizeButton_Click"
                                         ToolTip="Minimize"
                                         Style="{StaticResource TrafficButtonStyle}">
@@ -375,8 +562,8 @@
                                               Data="M1,4 L7,4" />
                                     </Canvas>
                                 </Button>
-                                <Button Background="#FF5F57"
-                                        BorderBrush="#D94942"
+                                <Button Background="#FF5477"
+                                        BorderBrush="#CB3D5C"
                                         Click="CloseButton_Click"
                                         ToolTip="Close"
                                         Style="{StaticResource TrafficButtonStyle}">
@@ -402,12 +589,8 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <Border Padding="10,5"
-                                    HorizontalAlignment="Left"
-                                    Background="{StaticResource BadgeBrush}"
-                                    BorderBrush="{StaticResource BadgeBorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="999">
+                            <Border HorizontalAlignment="Left"
+                                    Style="{StaticResource StepBadgeStyle}">
                                 <TextBlock FontSize="10.5"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentOrangeBrush}"
@@ -440,10 +623,10 @@
                                                    Text="{Binding InstallPathBadgeText}" />
                                         <Border Margin="0,14,0,0"
                                                 Padding="15,13"
-                                                Background="#20131A23"
+                                                Background="{StaticResource FieldSurfaceBrush}"
                                                 BorderBrush="{StaticResource CardBorderBrush}"
                                                 BorderThickness="1"
-                                                CornerRadius="17">
+                                                CornerRadius="20">
                                             <TextBox Style="{StaticResource PathTextBoxStyle}"
                                                      IsEnabled="{Binding CanInstall}"
                                                      Text="{Binding InstallPath, UpdateSourceTrigger=PropertyChanged}" />
@@ -458,6 +641,9 @@
 
                                 <Border Margin="0,16,0,0"
                                         Padding="18"
+                                        Background="{StaticResource StatusCardBrush}"
+                                        BorderBrush="#895267"
+                                        BorderThickness="1"
                                         Style="{StaticResource SoftCardStyle}">
                                     <StackPanel>
                                         <TextBlock FontSize="10.5"
@@ -504,12 +690,8 @@
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
 
-                            <Border Padding="10,5"
-                                    HorizontalAlignment="Left"
-                                    Background="{StaticResource BadgeBrush}"
-                                    BorderBrush="{StaticResource BadgeBorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="999">
+                            <Border HorizontalAlignment="Left"
+                                    Style="{StaticResource StepBadgeStyle}">
                                 <TextBlock FontSize="10.5"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentOrangeBrush}"
@@ -532,8 +714,18 @@
                                        TextWrapping="Wrap" />
 
                             <ScrollViewer Grid.Row="3"
-                                          Margin="0,20,2,0"
+                                          Margin="0,20,0,0"
+                                          CanContentScroll="False"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          PanningMode="VerticalFirst"
+                                          PanningDeceleration="0.001"
+                                          infra:SmoothScrollBehavior.IsEnabled="True"
+                                          infra:SmoothScrollBehavior.SmoothingDuration="280"
+                                          infra:SmoothScrollBehavior.WheelStep="10"
                                           VerticalScrollBarVisibility="Auto">
+                                <ScrollViewer.Resources>
+                                    <Style BasedOn="{StaticResource InstallerScrollBarStyle}" TargetType="{x:Type ScrollBar}" />
+                                </ScrollViewer.Resources>
                                 <StackPanel Margin="0,0,4,8">
                                     <Border Padding="18"
                                             Style="{StaticResource SoftCardStyle}">
@@ -663,12 +855,8 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <Border Padding="10,5"
-                                HorizontalAlignment="Left"
-                                Background="{StaticResource BadgeBrush}"
-                                BorderBrush="{StaticResource BadgeBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="999">
+                        <Border HorizontalAlignment="Left"
+                                Style="{StaticResource StepBadgeStyle}">
                             <TextBlock FontSize="10.5"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource AccentOrangeBrush}"
@@ -709,10 +897,10 @@
 
                                     <Border Width="54"
                                             Height="54"
-                                            Background="#2C1E15"
-                                            BorderBrush="#7E5434"
+                                            Background="#2F1C2F"
+                                            BorderBrush="#8A5F45"
                                             BorderThickness="1"
-                                            CornerRadius="18">
+                                            CornerRadius="16">
                                         <Viewbox Width="28"
                                                  Height="28"
                                                  HorizontalAlignment="Center"
@@ -768,7 +956,7 @@
                                         <ColumnDefinition Width="{Binding RemainingProgressValue, Converter={StaticResource ProgressToGridLengthConverter}}" />
                                     </Grid.ColumnDefinitions>
                                     <Border Grid.ColumnSpan="2"
-                                            Background="#21161E27"
+                                            Background="{StaticResource ProgressTrackBrush}"
                                             BorderBrush="{StaticResource CardBorderBrush}"
                                             BorderThickness="1"
                                             CornerRadius="999" />
@@ -833,11 +1021,11 @@
 
                                 <Border Grid.Row="2"
                                         Margin="18,16,18,18"
-                                        Padding="14"
+                                        Padding="16"
                                         Background="{StaticResource FooterBackgroundBrush}"
                                         BorderBrush="{StaticResource FooterBorderBrush}"
                                         BorderThickness="1"
-                                        CornerRadius="22">
+                                        CornerRadius="24">
                                     <Grid>
                                         <Grid Visibility="{Binding ShowLocationStep, Converter={StaticResource BoolToVisibility}}">
                                             <Grid.RowDefinitions>
@@ -850,25 +1038,20 @@
                                                        Text="Default folder first, then continue into setup options."
                                                        TextWrapping="Wrap" />
 
-                                            <Grid Grid.Row="1"
-                                                  Margin="0,12,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-
-                                                <Button Style="{StaticResource SecondaryButtonStyle}"
+                                            <UniformGrid Grid.Row="1"
+                                                         Margin="0,12,0,0"
+                                                         Columns="2">
+                                                <Button Margin="0,0,8,0"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
                                                         Click="BrowsePathButton_Click"
-                                                        Content="Change folder"
+                                                        Content="Change Folder"
                                                         IsEnabled="{Binding CanInstall}" />
-                                                <Button Grid.Column="2"
-                                                        MinWidth="110"
+                                                <Button Margin="8,0,0,0"
                                                         Style="{StaticResource PrimaryButtonStyle}"
                                                         Click="ProceedButton_Click"
-                                                        Content="Proceed"
+                                                        Content="Next"
                                                         IsEnabled="{Binding CanProceedFromLocation}" />
-                                            </Grid>
+                                            </UniformGrid>
                                         </Grid>
 
                                         <Grid Visibility="{Binding ShowOptionsStep, Converter={StaticResource BoolToVisibility}}">
@@ -882,25 +1065,20 @@
                                                        Text="Review the extras, then start the install."
                                                        TextWrapping="Wrap" />
 
-                                            <Grid Grid.Row="1"
-                                                  Margin="0,12,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-
-                                                <Button Style="{StaticResource SecondaryButtonStyle}"
+                                            <UniformGrid Grid.Row="1"
+                                                         Margin="0,12,0,0"
+                                                         Columns="2">
+                                                <Button Margin="0,0,8,0"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
                                                         Click="BackButton_Click"
                                                         Content="Back"
                                                         IsEnabled="{Binding CanInstall}" />
-                                                <Button Grid.Column="2"
-                                                        MinWidth="134"
+                                                <Button Margin="8,0,0,0"
                                                         Style="{StaticResource PrimaryButtonStyle}"
                                                         Click="InstallButton_Click"
                                                         Content="{Binding InstallButtonText}"
                                                         IsEnabled="{Binding CanRunPrimaryAction}" />
-                                            </Grid>
+                                            </UniformGrid>
                                         </Grid>
 
                                         <Grid Visibility="{Binding ShowProgressStep, Converter={StaticResource BoolToVisibility}}">
@@ -922,7 +1100,8 @@
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
 
-                                                <Button Style="{StaticResource SecondaryButtonStyle}"
+                                                <Button MinWidth="122"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
                                                         Click="BackButton_Click"
                                                         Content="Back"
                                                         Visibility="{Binding ShowReturnToOptionsButton, Converter={StaticResource BoolToVisibility}}" />
@@ -930,12 +1109,13 @@
                                                 <StackPanel Grid.Column="2"
                                                             Orientation="Horizontal"
                                                             HorizontalAlignment="Right">
-                                                    <Button Style="{StaticResource SecondaryButtonStyle}"
+                                                    <Button MinWidth="136"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
                                                             Click="LaunchButton_Click"
                                                             Content="Launch AudioBit"
                                                             Visibility="{Binding ShowLaunchButton, Converter={StaticResource BoolToVisibility}}" />
                                                     <Button Margin="10,0,0,0"
-                                                            MinWidth="118"
+                                                            MinWidth="132"
                                                             Style="{StaticResource PrimaryButtonStyle}"
                                                             Click="InstallButton_Click"
                                                             Content="{Binding InstallButtonText}"

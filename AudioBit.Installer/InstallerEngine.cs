@@ -375,7 +375,7 @@ public sealed class InstallerEngine
             if (cacheUninstaller)
             {
                 progress.Report(new InstallerProgress("REGISTERING", "Caching the themed uninstaller.", 92));
-                CacheInstallerRuntime();
+                TryCacheInstallerRuntime(progress);
             }
 
             if (options.CreateAnyShortcut)
@@ -413,6 +413,19 @@ public sealed class InstallerEngine
             }
 
             throw;
+        }
+    }
+
+    private void TryCacheInstallerRuntime(IProgress<InstallerProgress> progress)
+    {
+        try
+        {
+            CacheInstallerRuntime();
+        }
+        catch (Exception ex)
+        {
+            InstallerLogger.Log($"Installer cache refresh failed. Continuing without cache update. {ex}");
+            progress.Report(new InstallerProgress("REGISTERING", "Continuing without refreshing cached uninstaller files.", 93));
         }
     }
 
