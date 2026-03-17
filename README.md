@@ -15,16 +15,6 @@
   <img src="https://img.shields.io/badge/WPF-UI-10b981?style=for-the-badge" alt="WPF UI" />
 </p>
 
-<table>
-  <tr>
-    <td width="62%">
-      <img src="assets/audiobit-app.png" alt="AudioBit desktop app screenshot" />
-    </td>
-    <td width="38%" align="center">
-      <img src="assets/visualizer.svg" alt="AudioBit animated visualizer" />
-    </td>
-  </tr>
-</table>
 
 ## Overview
 
@@ -60,7 +50,7 @@ AudioBit delivers precision audio control with a modern glass UI. It unifies dev
 
 Control sessions from your phone or any browser.
 
-<img src="assets/audiobit-remote.png" alt="AudioBit Remote web UI" />
+
 
 ## Project Structure
 
@@ -94,4 +84,4 @@ dotnet run --project AudioBit.App/AudioBit.App.csproj --configuration Debug
 
 ## Credits
 
-Built by Amiya and contributors. Inspired by modern desktop tooling and studio-grade mixers.
+Built by Amiya. Inspired by modern desktop tooling and studio-grade mixers.
