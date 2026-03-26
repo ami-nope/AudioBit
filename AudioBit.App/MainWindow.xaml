@@ -12,7 +12,7 @@
         MinHeight="690"
         MaxWidth="356"
         MaxHeight="690"
-        Background="{DynamicResource WindowBackdropBrush}"
+        Background="{Binding CustomBackground, Converter={StaticResource CustomBackgroundConverter}, ConverterParameter=WindowBackdropBrush}"
         FontFamily="Segoe UI"
         Foreground="{DynamicResource TextPrimaryBrush}"
         ResizeMode="NoResize"
@@ -867,6 +867,42 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SettingsTextInputStyle" TargetType="{x:Type TextBox}">
+            <Setter Property="Background" Value="{DynamicResource OverlayOptionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource OverlayOptionBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentOrangeBrush}" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TextBox}">
+                        <Border x:Name="RootBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="RootBorder" Property="BorderBrush" Value="{DynamicResource AccentOrangeBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="{DynamicResource OverlayOptionHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="RootBorder" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SettingsSectionHeaderButtonStyle" TargetType="{x:Type Button}">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -909,7 +945,7 @@
              BasedOn="{StaticResource SettingsActionButtonStyle}"
                TargetType="{x:Type Button}">
             <Setter Property="Margin" Value="0" />
-            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Padding" Value="14,10" />
         </Style>
 
         <Style x:Key="CloseBehaviorOptionButtonStyle"
@@ -1127,7 +1163,7 @@
 
     <Grid>
         <Border x:Name="ShellBorder"
-                Background="{DynamicResource ShellBackgroundBrush}"
+                Background="{Binding CustomBackground, Converter={StaticResource CustomBackgroundConverter}, ConverterParameter=ShellBackgroundBrush}"
                 CornerRadius="28">
             <Grid x:Name="ShellClipHost">
                 <Border Background="Transparent"
@@ -2894,7 +2930,6 @@
                                         <ToggleButton Grid.Column="1" VerticalAlignment="Center" IsChecked="{Binding OpenOnStartup, Mode=TwoWay}" Style="{StaticResource SettingsToggleStyle}" />
                                     </Grid>
 
-                                    <Border Height="1" Background="{DynamicResource DividerBrush}" />
 
                                     <Grid Margin="0,12,0,6">
                                         <Grid.ColumnDefinitions>
@@ -3027,19 +3062,14 @@
                                                 <TextBlock Margin="0,2,0,0" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Text="Choose whether closing hides to tray or exits." TextWrapping="Wrap" />
                                             </StackPanel>
                                         </StackPanel>
-                                        <Grid Margin="0,10,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="10" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button Grid.Column="0" Tag="Tray" Command="{Binding SelectCloseButtonBehaviorCommand}" CommandParameter="Tray" Style="{StaticResource CloseBehaviorOptionButtonStyle}">
-                                                <TextBlock HorizontalAlignment="Center" FontSize="12" FontWeight="SemiBold" Text="Close -> Tray" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <Button Tag="Tray" MinWidth="110" Command="{Binding SelectCloseButtonBehaviorCommand}" CommandParameter="Tray" Style="{StaticResource CloseBehaviorOptionButtonStyle}">
+                                                <TextBlock HorizontalAlignment="Center" FontSize="11.5" FontWeight="SemiBold" Text="Minimize to Tray" />
                                             </Button>
-                                            <Button Grid.Column="2" Tag="Exit" Command="{Binding SelectCloseButtonBehaviorCommand}" CommandParameter="Exit" Style="{StaticResource CloseBehaviorOptionButtonStyle}">
-                                                <TextBlock HorizontalAlignment="Center" FontSize="12" FontWeight="SemiBold" Text="Close -> Exit" />
+                                            <Button Tag="Exit" MinWidth="110" Margin="8,0,0,0" Command="{Binding SelectCloseButtonBehaviorCommand}" CommandParameter="Exit" Style="{StaticResource CloseBehaviorOptionButtonStyle}">
+                                                <TextBlock HorizontalAlignment="Center" FontSize="11.5" FontWeight="SemiBold" Text="Exit App" />
                                             </Button>
-                                        </Grid>
+                                        </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -3517,45 +3547,22 @@
                                               StrokeStartLineCap="Round"
                                               StrokeEndLineCap="Round"
                                               Style="{StaticResource FooterTabStrokeShapeStyle}"
-                                              Data="M3.5,7.2 C6.4,4.3 11.6,4.3 14.5,7.2" />
+                                              Data="M2.7,7 C6,3.8 12,3.8 15.3,7" />
                                         <Path StrokeThickness="1.4"
                                               StrokeStartLineCap="Round"
                                               StrokeEndLineCap="Round"
                                               Style="{StaticResource FooterTabStrokeShapeStyle}"
-                                              Data="M5.8,9.6 C7.6,7.9 10.4,7.9 12.2,9.6" />
-                                        <Ellipse Width="1.8"
-                                                 Height="1.8"
-                                                 Canvas.Left="8.1"
-                                                 Canvas.Top="10.8"
+                                              Data="M4.9,9.8 C7.2,7.5 10.8,7.5 13.1,9.8" />
+                                        <Path StrokeThickness="1.4"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              Style="{StaticResource FooterTabStrokeShapeStyle}"
+                                              Data="M7.2,12.3 C8.2,11.3 9.8,11.3 10.8,12.3" />
+                                        <Ellipse Width="2.2"
+                                                 Height="2.2"
+                                                 Canvas.Left="7.9"
+                                                 Canvas.Top="13.2"
                                                  Style="{StaticResource FooterTabFillShapeStyle}" />
-                                        <Rectangle Width="2"
-                                                   Height="2.4"
-                                                   RadiusX="0.7"
-                                                   RadiusY="0.7"
-                                                   Canvas.Left="3.9"
-                                                   Canvas.Top="12.6"
-                                                   Style="{StaticResource FooterTabFillShapeStyle}" />
-                                        <Rectangle Width="2"
-                                                   Height="3.4"
-                                                   RadiusX="0.7"
-                                                   RadiusY="0.7"
-                                                   Canvas.Left="6.9"
-                                                   Canvas.Top="11.6"
-                                                   Style="{StaticResource FooterTabFillShapeStyle}" />
-                                        <Rectangle Width="2"
-                                                   Height="4.4"
-                                                   RadiusX="0.7"
-                                                   RadiusY="0.7"
-                                                   Canvas.Left="9.9"
-                                                   Canvas.Top="10.6"
-                                                   Style="{StaticResource FooterTabFillShapeStyle}" />
-                                        <Rectangle Width="2"
-                                                   Height="5.4"
-                                                   RadiusX="0.7"
-                                                   RadiusY="0.7"
-                                                   Canvas.Left="12.9"
-                                                   Canvas.Top="9.6"
-                                                   Style="{StaticResource FooterTabFillShapeStyle}" />
                                     </Canvas>
                                     <TextBlock Margin="0,4,0,0"
                                                Style="{StaticResource FooterTabTextStyle}"

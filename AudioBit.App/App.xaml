@@ -1,8 +1,10 @@
 <Application x:Class="AudioBit.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:AudioBit.App.Infrastructure">
     <Application.Resources>
         <ResourceDictionary>
+            <local:CustomBackgroundConverter x:Key="CustomBackgroundConverter" />
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/AudioBit.UI;component/Resources/Palette.xaml" />
             </ResourceDictionary.MergedDictionaries>

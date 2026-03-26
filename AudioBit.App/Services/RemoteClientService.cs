@@ -1926,8 +1926,9 @@ internal sealed class RemoteClientService : IDisposable
         }
 
         var trimmed = raw.Trim();
-        if (IPAddress.TryParse(trimmed, out address))
+        if (IPAddress.TryParse(trimmed, out var parsedAddress) && parsedAddress is not null)
         {
+            address = parsedAddress;
             normalized = address.ToString();
             return true;
         }
@@ -1938,8 +1939,9 @@ internal sealed class RemoteClientService : IDisposable
             if (end > 1)
             {
                 var host = trimmed.Substring(1, end - 1);
-                if (IPAddress.TryParse(host, out address))
+                if (IPAddress.TryParse(host, out parsedAddress) && parsedAddress is not null)
                 {
+                    address = parsedAddress;
                     normalized = address.ToString();
                     return true;
                 }
@@ -1950,8 +1952,9 @@ internal sealed class RemoteClientService : IDisposable
         if (lastColon > 0 && trimmed.IndexOf(':') == lastColon)
         {
             var host = trimmed.Substring(0, lastColon);
-            if (IPAddress.TryParse(host, out address))
+            if (IPAddress.TryParse(host, out parsedAddress) && parsedAddress is not null)
             {
+                address = parsedAddress;
                 normalized = address.ToString();
                 return true;
             }

@@ -11,7 +11,7 @@ namespace AudioBit.App.ViewModels;
 
 public sealed class AppAudioViewModel : ObservableObject
 {
-    private static readonly TimeSpan LocalVolumeSyncHold = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan LocalVolumeSyncHold = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan RemoteVolumeAnimationDuration = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan RemoteVolumeAnimationFrameInterval = TimeSpan.FromMilliseconds(16);
     private const double RemoteVolumeAnimationThreshold = 0.012;

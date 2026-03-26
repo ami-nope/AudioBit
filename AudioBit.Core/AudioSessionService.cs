@@ -16,10 +16,11 @@ public sealed class AudioSessionService : IDisposable
     private static readonly TimeSpan SilentRetention = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DeviceInventoryRefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan DeviceRouteRefreshInterval = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan DeviceSwitchGracePeriod = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan DeviceSwitchGracePeriod = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan PendingRouteWriteRetryInterval = TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan RouteReadbackGracePeriod = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RouteWriteMinInterval = TimeSpan.FromMilliseconds(650);
+    private static readonly TimeSpan VolumeWriteGracePeriod = TimeSpan.FromMilliseconds(500);
     private const int MaxPendingRouteWriteRetries = 6;
     private const int MaxIconCacheEntries = 256;
 
@@ -36,6 +37,8 @@ public sealed class AudioSessionService : IDisposable
     private readonly HashSet<int> _visibleProcessIdsBuffer = new();
     private readonly List<int> _expiredProcessIdsBuffer = new();
     private readonly HashSet<int> _routeTargetProcessIdsBuffer = new();
+    private readonly Dictionary<int, DateTime> _volumeWriteTimestamps = new();
+    private readonly Dictionary<int, DateTime> _muteWriteTimestamps = new();
     private readonly ImageSource _defaultIcon;
 
     private bool _disposed;
@@ -199,14 +202,43 @@ public sealed class AudioSessionService : IDisposable
     {
         ThrowIfDisposed();
 
+        // Phase 1: Collect live session data from COM *outside* the lock.
+        var liveGroups = new Dictionary<int, SessionGroup>();
+        bool hasPlaybackEndpoint;
+        string playbackDeviceId;
+        string playbackDeviceName;
+        float masterVolume;
+        bool masterMuted;
+        bool hasPlayback;
+
+        try
+        {
+            hasPlaybackEndpoint = CollectLiveGroups(liveGroups);
+        }
+        catch
+        {
+            hasPlaybackEndpoint = false;
+        }
+
+        // Snapshot device state read during CollectLiveGroups.
+        lock (_syncRoot)
+        {
+            playbackDeviceId = _currentPlaybackDeviceId;
+            playbackDeviceName = _currentDeviceName;
+            masterVolume = _masterVolume;
+            masterMuted = _isMasterMuted;
+            hasPlayback = _hasPlaybackDevice;
+        }
+
+        // Phase 1.5: Refresh device inventory outside the lock (COM-heavy).
+        RefreshDeviceInventory(DateTime.UtcNow);
+
+        // Phase 2: Take the lock only to merge collected data into internal state.
         lock (_syncRoot)
         {
             var now = DateTime.UtcNow;
             var pendingDefaultSwitch = _defaultDeviceChanged;
             var previousPlaybackDeviceId = _currentPlaybackDeviceId;
-
-            _liveGroupsBuffer.Clear();
-            var hasPlaybackEndpoint = CollectLiveGroups(_liveGroupsBuffer);
 
             if (pendingDefaultSwitch)
             {
@@ -216,6 +248,8 @@ public sealed class AudioSessionService : IDisposable
                     {
                         _appsByProcessId.Clear();
                         _deviceRouteCache.Clear();
+                        _volumeWriteTimestamps.Clear();
+                        _muteWriteTimestamps.Clear();
                     }
 
                     _defaultDeviceChanged = false;
@@ -224,19 +258,19 @@ public sealed class AudioSessionService : IDisposable
                 {
                     _appsByProcessId.Clear();
                     _deviceRouteCache.Clear();
+                    _volumeWriteTimestamps.Clear();
+                    _muteWriteTimestamps.Clear();
                     _defaultDeviceChanged = false;
                 }
             }
 
             _visibleProcessIdsBuffer.Clear();
-            foreach (var processId in _liveGroupsBuffer.Keys)
+            foreach (var processId in liveGroups.Keys)
             {
                 _visibleProcessIdsBuffer.Add(processId);
             }
 
-            RefreshDeviceInventory(now);
-
-            foreach (var group in _liveGroupsBuffer.Values)
+            foreach (var group in liveGroups.Values)
             {
                 if (!_appsByProcessId.TryGetValue(group.ProcessId, out var model))
                 {
@@ -260,9 +294,24 @@ public sealed class AudioSessionService : IDisposable
 
                 model.AppName = group.AppName;
                 model.Icon = group.Icon;
-                model.Volume = group.AverageVolume;
+
+                // Skip overwriting volume/mute if user just wrote them recently.
+                var skipVolumeOverwrite = _volumeWriteTimestamps.TryGetValue(group.ProcessId, out var volTs)
+                    && now - volTs < VolumeWriteGracePeriod;
+                var skipMuteOverwrite = _muteWriteTimestamps.TryGetValue(group.ProcessId, out var muteTs)
+                    && now - muteTs < VolumeWriteGracePeriod;
+
+                if (!skipVolumeOverwrite)
+                {
+                    model.Volume = group.AverageVolume;
+                }
+
                 model.Peak = group.Peak;
-                model.IsMuted = group.IsMuted;
+
+                if (!skipMuteOverwrite)
+                {
+                    model.IsMuted = group.IsMuted;
+                }
 
                 if (group.Peak > AppAudioModel.SilenceThreshold)
                 {
@@ -305,6 +354,8 @@ public sealed class AudioSessionService : IDisposable
             {
                 _appsByProcessId.Remove(processId);
                 _deviceRouteCache.Remove(processId);
+                _volumeWriteTimestamps.Remove(processId);
+                _muteWriteTimestamps.Remove(processId);
             }
 
             var snapshot = new List<AppAudioModel>(_appsByProcessId.Count);
@@ -324,19 +375,15 @@ public sealed class AudioSessionService : IDisposable
 
         var clampedVolume = Math.Clamp(volume, 0.0f, 1.0f);
 
-        ForEachActiveSession((session, sessionProcessId) =>
+        ForMatchingSession(processId, session =>
         {
-            if (sessionProcessId != processId)
-            {
-                return;
-            }
-
             using var simpleAudioVolume = session.SimpleAudioVolume;
             simpleAudioVolume.Volume = clampedVolume;
         });
 
         lock (_syncRoot)
         {
+            _volumeWriteTimestamps[processId] = DateTime.UtcNow;
             if (_appsByProcessId.TryGetValue(processId, out var model))
             {
                 model.Volume = clampedVolume;
@@ -352,19 +399,15 @@ public sealed class AudioSessionService : IDisposable
     {
         ThrowIfDisposed();
 
-        ForEachActiveSession((session, sessionProcessId) =>
+        ForMatchingSession(processId, session =>
         {
-            if (sessionProcessId != processId)
-            {
-                return;
-            }
-
             using var simpleAudioVolume = session.SimpleAudioVolume;
             simpleAudioVolume.Mute = isMuted;
         });
 
         lock (_syncRoot)
         {
+            _muteWriteTimestamps[processId] = DateTime.UtcNow;
             if (_appsByProcessId.TryGetValue(processId, out var model))
             {
                 model.IsMuted = isMuted;
@@ -555,6 +598,36 @@ public sealed class AudioSessionService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Change the system-wide default audio endpoint for playback or capture.
+    /// </summary>
+    public bool SetSystemDefaultDevice(string deviceId, AudioDeviceFlow flow)
+    {
+        ThrowIfDisposed();
+
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return false;
+        }
+
+        try
+        {
+            var policyConfig = new SystemDefaultDeviceSwitcher();
+            var success = policyConfig.SetDefaultEndpoint(deviceId, flow);
+            if (success)
+            {
+                OnDefaultPlaybackDeviceChanged();
+            }
+
+            return success;
+        }
+        catch (Exception ex)
+        {
+            RouteLog($"SetSystemDefaultDevice failed: flow={flow} deviceId='{deviceId}' error={ex.Message}");
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -713,6 +786,26 @@ public sealed class AudioSessionService : IDisposable
     private void ForEachActiveSession(Action<AudioSessionControl, int> sessionAction)
     {
         ForEachActiveSessionOnDevice(DataFlow.Render, sessionAction);
+    }
+
+    /// <summary>
+    /// Optimized variant: only invokes the action on sessions belonging to a specific processId.
+    /// Avoids iterating every session on every device when only one process needs updating.
+    /// </summary>
+    private void ForMatchingSession(int targetProcessId, Action<AudioSessionControl> sessionAction)
+    {
+        if (targetProcessId <= 0)
+        {
+            return;
+        }
+
+        ForEachActiveSessionOnDevice(DataFlow.Render, (session, sessionProcessId) =>
+        {
+            if (sessionProcessId == targetProcessId)
+            {
+                sessionAction(session);
+            }
+        });
     }
 
     private void ForEachActiveSessionOnDevice(DataFlow dataFlow, Action<AudioSessionControl, int> sessionAction)
@@ -1304,7 +1397,22 @@ public sealed class AudioSessionService : IDisposable
                 && now - route.LastUpdatedUtc >= DeviceRouteRefreshInterval;
             if (shouldRefreshReadback)
             {
-                ReadDeviceRouteCacheEntry(processId, route, now);
+                var pid = processId;
+                var rt = route;
+                var capturedPid = pid;
+                var capturedRoute = rt;
+                _ = Task.Run(() =>
+                {
+                    ReadDeviceRouteCacheEntry(capturedPid, capturedRoute, DateTime.UtcNow);
+                    lock (_syncRoot)
+                    {
+                        if (_appsByProcessId.TryGetValue(capturedPid, out var m))
+                        {
+                            m.PreferredRenderDeviceId = capturedRoute.RenderDeviceId;
+                            m.PreferredCaptureDeviceId = capturedRoute.CaptureDeviceId;
+                        }
+                    }
+                });
             }
 
             if (_appsByProcessId.TryGetValue(processId, out var model))
@@ -1317,6 +1425,15 @@ public sealed class AudioSessionService : IDisposable
 
     private void ReadDeviceRouteCacheEntry(int processId, DeviceRouteCacheEntry route, DateTime now)
     {
+        // Skip readback entirely while any write is still in-flight or pending retry.
+        // This prevents the readback from overwriting a user-initiated route change
+        // before the write has had a chance to propagate through the OS.
+        if (route.IsRenderWritePending || route.IsRenderWriteQueued
+            || route.IsCaptureWritePending || route.IsCaptureWriteQueued)
+        {
+            return;
+        }
+
         if (TryGetPersistedDefaultAudioEndpoint(processId, AudioDeviceFlow.Render, out var renderDeviceId))
         {
             var suppressEmptyReadback = string.IsNullOrEmpty(renderDeviceId)

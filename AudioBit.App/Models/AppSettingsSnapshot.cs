@@ -41,4 +41,7 @@ public sealed class AppSettingsSnapshot
     public string SelectedCalibrationOption { get; set; } = "Balanced";
 
     public string AppliedCalibrationLabel { get; set; } = "Adaptive / Balanced";
+
+    // User-selected custom background. Supports a solid color or a simple multi-stop gradient string.
+    public string? CustomBackground { get; set; }
 }

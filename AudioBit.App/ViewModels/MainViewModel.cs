@@ -20,7 +20,7 @@ namespace AudioBit.App.ViewModels;
 internal sealed class MainViewModel : ObservableObject, IDisposable
 {
     private const ulong LowPerformanceModeMemoryThresholdBytes = 12UL * 1024UL * 1024UL * 1024UL;
-    private static readonly TimeSpan LocalMasterVolumeSyncHold = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan LocalMasterVolumeSyncHold = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan RemoteMasterVolumeAnimationDuration = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan RemoteMasterVolumeAnimationFrameInterval = TimeSpan.FromMilliseconds(16);
     private const double RemoteMasterVolumeAnimationThreshold = 0.012;
@@ -65,6 +65,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly List<int> _staleSessionIdsBuffer = new();
     private readonly ObservableCollection<AudioDeviceOptionModel> _playbackDevices = new();
     private readonly ObservableCollection<AudioDeviceOptionModel> _captureDevices = new();
+    private readonly DispatcherTimer _persistDebounceTimer;
 
     private int _refreshInProgress;
     private bool _disposed;
@@ -74,6 +75,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private bool _resumeMonitoringWhenRestored;
     private bool _startMinimizedPending;
     private string _statusText = "Monitoring default playback device";
+    private string? _customBackground;
+    private string _customBackgroundDraft = string.Empty;
+    private string _customBackgroundValidationMessage = string.Empty;
     private string _currentDeviceName = "No playback device";
     private bool _hasPlaybackDevice;
     private bool _isLowPerformanceMode = GetDefaultLowPerformanceMode();
@@ -216,6 +220,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             Interval = TimeSpan.FromSeconds(5),
         };
         _remoteConnectionTimer.Tick += RemoteConnectionTimerOnTick;
+        _persistDebounceTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(300),
+        };
+        _persistDebounceTimer.Tick += PersistDebounceTimerOnTick;
         _remoteClientService.SessionInfoChanged += OnRemoteSessionInfoChanged;
 
         ApplySettingsSnapshot(_appSettingsStore.Load(), persistToDisk: false);
@@ -834,6 +843,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            if (!_isApplyingSettings && !string.IsNullOrEmpty(normalized))
+            {
+                _ = Task.Run(() =>
+                {
+                    try { _audioSessionService.SetSystemDefaultDevice(normalized, AudioDeviceFlow.Render); }
+                    catch { /* best effort */ }
+                });
+            }
+
             PersistSettingsIfReady();
         }
     }
@@ -847,6 +865,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             if (!SetProperty(ref _defaultMicrophoneDeviceId, normalized))
             {
                 return;
+            }
+
+            if (!_isApplyingSettings && !string.IsNullOrEmpty(normalized))
+            {
+                _ = Task.Run(() =>
+                {
+                    try { _audioSessionService.SetSystemDefaultDevice(normalized, AudioDeviceFlow.Capture); }
+                    catch { /* best effort */ }
+                });
             }
 
             PersistSettingsIfReady();
@@ -992,6 +1019,46 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             PersistSettingsIfReady();
         }
     }
+
+    public string? CustomBackground
+    {
+        get => _customBackground;
+        private set
+        {
+            if (!SetProperty(ref _customBackground, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(HasCustomBackground));
+            PersistSettingsIfReady();
+        }
+    }
+
+    public string CustomBackgroundDraft
+    {
+        get => _customBackgroundDraft;
+        set => SetCustomBackgroundDraft(value, clearValidationMessage: true);
+    }
+
+    public bool HasCustomBackground => !string.IsNullOrWhiteSpace(CustomBackground);
+
+    public string CustomBackgroundValidationMessage
+    {
+        get => _customBackgroundValidationMessage;
+        private set
+        {
+            var normalized = value ?? string.Empty;
+            if (!SetProperty(ref _customBackgroundValidationMessage, normalized))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(HasCustomBackgroundValidationError));
+        }
+    }
+
+    public bool HasCustomBackgroundValidationError => !string.IsNullOrWhiteSpace(CustomBackgroundValidationMessage);
 
     public double MasterVolume
     {
@@ -1225,6 +1292,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _masterVolumeAnimationTimer.Tick -= MasterVolumeAnimationTimerOnTick;
         _remoteConnectionTimer.Stop();
         _remoteConnectionTimer.Tick -= RemoteConnectionTimerOnTick;
+        _persistDebounceTimer.Stop();
+        _persistDebounceTimer.Tick -= PersistDebounceTimerOnTick;
         _remoteClientService.SessionInfoChanged -= OnRemoteSessionInfoChanged;
     }
 
@@ -2372,12 +2441,33 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool TryApplyCustomBackgroundDraft()
+    {
+        return TryApplyCustomBackground(CustomBackgroundDraft, showValidationMessage: true);
+    }
+
+    public bool TryApplyCustomBackground(string? value)
+    {
+        return TryApplyCustomBackground(value, showValidationMessage: true);
+    }
+
+    public void ResetCustomBackground()
+    {
+        ApplyCustomBackgroundValue(null, updateDraft: true, clearValidationMessage: true);
+    }
+
+    public void RevertCustomBackgroundDraft()
+    {
+        SetCustomBackgroundDraft(CustomBackground ?? string.Empty, clearValidationMessage: true);
+    }
+
     private void ApplySettingsSnapshot(AppSettingsSnapshot snapshot, bool persistToDisk)
     {
         _isApplyingSettings = true;
 
         try
         {
+            TryApplyCustomBackground(snapshot.CustomBackground, showValidationMessage: false);
             OpenOnStartup = snapshot.OpenOnStartup;
             HideToTrayOnMinimize = snapshot.HideToTrayOnMinimize;
             StartMinimized = snapshot.StartMinimized;
@@ -2443,7 +2533,64 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             SelectedCalibrationMode = SelectedCalibrationMode,
             SelectedCalibrationOption = SelectedCalibrationOption,
             AppliedCalibrationLabel = AppliedCalibrationLabel,
+            CustomBackground = CustomBackground,
         };
+    }
+
+    private bool TryApplyCustomBackground(string? value, bool showValidationMessage)
+    {
+        var normalized = CustomBackgroundParser.Normalize(value);
+        if (normalized is null)
+        {
+            ApplyCustomBackgroundValue(null, updateDraft: true, clearValidationMessage: true);
+            return true;
+        }
+
+        if (!CustomBackgroundParser.TryParse(normalized, out _))
+        {
+            if (!showValidationMessage)
+            {
+                ApplyCustomBackgroundValue(null, updateDraft: true, clearValidationMessage: true);
+                return false;
+            }
+
+            SetCustomBackgroundDraft(normalized, clearValidationMessage: false);
+            CustomBackgroundValidationMessage = "Use a color like #181824 or a gradient like #181824 -> #10111A.";
+            return false;
+        }
+
+        ApplyCustomBackgroundValue(normalized, updateDraft: true, clearValidationMessage: true);
+        return true;
+    }
+
+    private void ApplyCustomBackgroundValue(string? value, bool updateDraft, bool clearValidationMessage)
+    {
+        var normalized = CustomBackgroundParser.Normalize(value);
+        if (updateDraft)
+        {
+            SetCustomBackgroundDraft(normalized ?? string.Empty, clearValidationMessage);
+        }
+        else if (clearValidationMessage)
+        {
+            CustomBackgroundValidationMessage = string.Empty;
+        }
+
+        CustomBackground = normalized;
+    }
+
+    private void SetCustomBackgroundDraft(string? value, bool clearValidationMessage)
+    {
+        var normalized = value ?? string.Empty;
+        if (SetProperty(ref _customBackgroundDraft, normalized, nameof(CustomBackgroundDraft)) && clearValidationMessage)
+        {
+            CustomBackgroundValidationMessage = string.Empty;
+            return;
+        }
+
+        if (clearValidationMessage)
+        {
+            CustomBackgroundValidationMessage = string.Empty;
+        }
     }
 
     private static bool GetDefaultLowPerformanceMode()
@@ -2489,6 +2636,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
+        // Debounce: restart the timer so rapid property changes batch into one write.
+        _persistDebounceTimer.Stop();
+        _persistDebounceTimer.Start();
+    }
+
+    private void PersistDebounceTimerOnTick(object? sender, EventArgs e)
+    {
+        _persistDebounceTimer.Stop();
 
         try
         {
