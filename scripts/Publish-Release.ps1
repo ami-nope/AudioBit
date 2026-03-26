@@ -27,6 +27,8 @@ if ($NoRestore)
     $publishArgs += "--no-restore"
 }
 
+Write-Warning "This script builds the legacy custom-installer package. Updater-compatible releases should be published with scripts\Release-Velopack.ps1."
+
 function Assert-LastExitCode([string]$Message)
 {
     if ($LASTEXITCODE -ne 0)
@@ -83,6 +85,9 @@ try
 AudioBit publish-ready output
 Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 Runtime: $Runtime
+
+This package path is the legacy custom-installer flow.
+Velopack GitHub Releases are the supported path for automatic updates.
 
 Installer:
   $setupDir

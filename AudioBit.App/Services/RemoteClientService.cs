@@ -21,8 +21,6 @@ internal sealed class RemoteClientService : IDisposable
     private const int SessionIdLength = 10;
     private const int PairCodeLength = 6;
     private const string SessionIdAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private const string DefaultRelayHttp = "https://audiobit-relay-production.up.railway.app/";
-    private const string DefaultRelayWs = "wss://audiobit-relay-production.up.railway.app/ws";
     private static readonly TimeSpan MeterInterval = TimeSpan.FromSeconds(1.0 / 60.0);
     private static readonly TimeSpan StateInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StateKeepAliveInterval = TimeSpan.FromSeconds(1);
@@ -65,6 +63,7 @@ internal sealed class RemoteClientService : IDisposable
     private readonly Dictionary<string, string> _geoIpCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Task<string?>> _geoIpLookups = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _geoIpLastAttemptUtc = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _geoIpLookupUrlTemplate;
     private string _connectedDeviceId = string.Empty;
     private string _connectedDeviceName = string.Empty;
     private string _connectedDeviceLocation = string.Empty;
@@ -78,12 +77,15 @@ internal sealed class RemoteClientService : IDisposable
     private int? _existingDeviceCount;
     private int? _connectedDeviceCount;
 
-    public RemoteClientService(AudioSessionService audioSessionService)
+    public RemoteClientService(AudioSessionService audioSessionService, ExternalLinksConfiguration externalLinks)
     {
         _audioSessionService = audioSessionService;
+        ArgumentNullException.ThrowIfNull(externalLinks);
 
-        var fallbackHttp = GetConfiguredUri("AUDIOBIT_RELAY_HTTP", DefaultRelayHttp);
-        var fallbackWs = GetConfiguredUri("AUDIOBIT_RELAY_WS", DefaultRelayWs);
+        _geoIpLookupUrlTemplate = externalLinks.GeoIpLookupUrlTemplate;
+
+        var fallbackHttp = GetConfiguredUri("AUDIOBIT_RELAY_HTTP", externalLinks.RelayHttpBaseUri.AbsoluteUri);
+        var fallbackWs = GetConfiguredUri("AUDIOBIT_RELAY_WS", externalLinks.RelayWebSocketUri.AbsoluteUri);
         var primaryHttp = GetConfiguredUriOrNull("AUDIOBIT_RELAY_HTTP_PRIMARY");
         var primaryWs = GetConfiguredUriOrNull("AUDIOBIT_RELAY_WS_PRIMARY");
         _relayTargets = BuildRelayTargets(primaryHttp, primaryWs, fallbackHttp, fallbackWs);
@@ -100,6 +102,7 @@ internal sealed class RemoteClientService : IDisposable
         _relayConnection.Disconnected += OnRelayDisconnected;
         _relayConnection.MessageReceived += OnRelayMessageReceived;
 
+        Log($"External links source: {externalLinks.Source}");
         Log($"Relay order: {string.Join(" -> ", _relayTargets.Select(target => $"{target.Name} [{target.WsEndpoint}]"))}");
     }
 
@@ -1830,7 +1833,7 @@ internal sealed class RemoteClientService : IDisposable
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
             cts.CancelAfter(GeoIpLookupTimeout);
 
-            var requestUri = new Uri($"https://ipapi.co/{ipAddress}/json/");
+            var requestUri = BuildGeoIpRequestUri(ipAddress);
             using var response = await GeoIpClient.GetAsync(requestUri, cts.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
@@ -2008,7 +2011,7 @@ internal sealed class RemoteClientService : IDisposable
         var resolvedSecondaryHttp = primaryHttp ?? DeriveHttpBaseFromWs(primaryWs);
         var resolvedSecondaryWs = primaryWs ?? DeriveWsFromHttp(primaryHttp);
 
-        // Keep Railway/default endpoint as primary, with optional configured endpoint as secondary.
+        // Keep the remote-config/default endpoint as primary, with optional configured endpoint as secondary.
         AddUniqueRelayTarget(targets, new RelayTarget("primary", fallbackHttp, fallbackWs, true));
 
         if (resolvedSecondaryHttp is not null && resolvedSecondaryWs is not null)
@@ -2119,6 +2122,12 @@ internal sealed class RemoteClientService : IDisposable
         }
 
         return SecondaryProbeAttempts;
+    }
+
+    private Uri BuildGeoIpRequestUri(string ipAddress)
+    {
+        var requestUri = _geoIpLookupUrlTemplate.Replace("{ip}", Uri.EscapeDataString(ipAddress), StringComparison.OrdinalIgnoreCase);
+        return new Uri(requestUri, UriKind.Absolute);
     }
 
     private void ThrowIfDisposed()

@@ -25,11 +25,28 @@ public sealed class AppAudioModel
 
     public string PreferredCaptureDeviceId { get; set; } = string.Empty;
 
+    public bool IsPinned { get; set; }
+
+    public string AppKey => CreateIdentityKey(AppName);
+
     public float AudiblePeak => IsMuted ? 0.0f : Math.Clamp(Peak * Volume, 0.0f, 1.0f);
 
     public bool IsActive => AudiblePeak > SilenceThreshold;
 
-    public double Opacity => IsActive || DateTime.UtcNow - LastAudioTime <= RecentlyActiveHold ? 1.0 : 0.5;
+    public double Opacity => IsPinned || IsActive || DateTime.UtcNow - LastAudioTime <= RecentlyActiveHold ? 1.0 : 0.5;
+
+    public static string CreateIdentityKey(string? appName)
+    {
+        if (string.IsNullOrWhiteSpace(appName))
+        {
+            return string.Empty;
+        }
+
+        var normalized = appName.Trim();
+        return normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? normalized[..^4]
+            : normalized;
+    }
 
     public AppAudioModel Clone()
     {
@@ -44,6 +61,7 @@ public sealed class AppAudioModel
             LastAudioTime = LastAudioTime,
             PreferredRenderDeviceId = PreferredRenderDeviceId,
             PreferredCaptureDeviceId = PreferredCaptureDeviceId,
+            IsPinned = IsPinned,
         };
     }
 }

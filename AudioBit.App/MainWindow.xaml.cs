@@ -391,6 +391,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.PropertyName == nameof(MainViewModel.IsUpdateRestartDialogVisible))
+        {
+            if (_viewModel.IsUpdateRestartDialogVisible)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(ShowUpdateRestartDialog));
+            }
+
+            return;
+        }
+
         if (e.PropertyName == nameof(MainViewModel.IsAnyOverlayVisible)
             || e.PropertyName == nameof(MainViewModel.IsRemoteQrPanelVisible)
             || e.PropertyName == nameof(MainViewModel.IsProfilesTabSelected)
@@ -490,6 +500,32 @@ public partial class MainWindow : Window
             SavedOverlayShift.X = 0;
             SavedOverlayShift.Y = 0;
         }
+    }
+
+    private void ShowUpdateRestartDialog()
+    {
+        if (!_viewModel.IsUpdateRestartDialogVisible)
+        {
+            return;
+        }
+
+        if (!IsVisible || !ShowInTaskbar || WindowState == WindowState.Minimized || _notifyIconService.IsRegistered)
+        {
+            RestoreFromTray();
+        }
+        else
+        {
+            Show();
+            ShowInTaskbar = true;
+            WindowState = WindowState.Normal;
+            Activate();
+            ApplyRoundedWindowRegion();
+        }
+
+        Topmost = true;
+        Activate();
+        Focus();
+        Topmost = _viewModel.IsAlwaysOnTop;
     }
 
     private void RefreshHotKeyRegistration()
@@ -851,6 +887,7 @@ public partial class MainWindow : Window
     {
         ApplyRoundedClip(CalibrateOverlayHost, 24);
         ApplyRoundedClip(SavedOverlayHost, 24);
+        ApplyRoundedClip(UpdateRestartOverlayHost, 24);
     }
 
     private static void ApplyRoundedClip(FrameworkElement element, double radius)

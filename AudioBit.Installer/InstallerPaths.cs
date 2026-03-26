@@ -8,7 +8,6 @@ internal static class InstallerPaths
     public const string AppExecutableName = "AudioBit.App.exe";
     public const string PayloadFileName = "AudioBit-win-x64.zip";
     public const string SetupExecutableName = "AudioBit.Setup.exe";
-    public const string Version = "1.1";
 
     public static string GetDefaultInstallPath()
     {

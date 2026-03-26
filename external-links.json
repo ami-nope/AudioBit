@@ -1,6 +1,4 @@
 {
-  "sample_only": true,
-  "description": "Reference file for external URLs currently hardcoded in AudioBit. The app does not read this file yet.",
   "relay": {
     "http_base_url": "https://audiobit-relay-production.up.railway.app/",
     "ws_url": "wss://audiobit-relay-production.up.railway.app/ws"

@@ -44,4 +44,6 @@ public sealed class AppSettingsSnapshot
 
     // User-selected custom background. Supports a solid color or a simple multi-stop gradient string.
     public string? CustomBackground { get; set; }
+
+    public List<string> PinnedAppKeys { get; set; } = [];
 }

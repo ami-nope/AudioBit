@@ -57,12 +57,14 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly QrCodeService _qrCodeService;
     private readonly AppSettingsStore _appSettingsStore;
     private readonly StartupRegistrationService _startupRegistrationService;
+    private readonly AppUpdaterService _appUpdaterService;
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _masterVolumeAnimationTimer;
     private readonly DispatcherTimer _remoteConnectionTimer;
     private readonly Dictionary<int, AppAudioViewModel> _viewModelLookup = new();
     private readonly HashSet<int> _visibleSessionIdsBuffer = new();
     private readonly List<int> _staleSessionIdsBuffer = new();
+    private readonly HashSet<string> _pinnedAppKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<AudioDeviceOptionModel> _playbackDevices = new();
     private readonly ObservableCollection<AudioDeviceOptionModel> _captureDevices = new();
     private readonly DispatcherTimer _persistDebounceTimer;
@@ -148,19 +150,30 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isRemoteSessionOverlayPinned;
     private string _lastRemoteSessionHistoryKey = string.Empty;
     private DateTimeOffset _lastRemoteSessionHistoryAtUtc = DateTimeOffset.MinValue;
+    private string _appVersionText = "0.0.0";
+    private string _appInstallTypeText = "Development Build";
+    private string _appUpdateStatusTitle = "Updater unavailable";
+    private string _appUpdateStatusDetail = "Updater unavailable in development builds.";
+    private string _appPendingVersionText = string.Empty;
+    private string _appUpdateSummaryText = string.Empty;
+    private bool _hasPendingVersion;
+    private bool _hasUpdateSummary;
+    private bool _isUpdateRestartDialogVisible;
 
     public MainViewModel(
         AudioSessionService audioSessionService,
         RemoteClientService remoteClientService,
         QrCodeService qrCodeService,
         AppSettingsStore appSettingsStore,
-        StartupRegistrationService startupRegistrationService)
+        StartupRegistrationService startupRegistrationService,
+        AppUpdaterService appUpdaterService)
     {
         _audioSessionService = audioSessionService;
         _remoteClientService = remoteClientService;
         _qrCodeService = qrCodeService;
         _appSettingsStore = appSettingsStore;
         _startupRegistrationService = startupRegistrationService;
+        _appUpdaterService = appUpdaterService;
         Sessions = new ObservableCollection<AppAudioViewModel>();
         PlaybackDevices = new ReadOnlyObservableCollection<AudioDeviceOptionModel>(_playbackDevices);
         CaptureDevices = new ReadOnlyObservableCollection<AudioDeviceOptionModel>(_captureDevices);
@@ -204,6 +217,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         RemoveRemoteDeviceCommand = new AsyncRelayCommand(RemoveRemoteDeviceAsync, CanRemoveRemoteDevice);
         ToggleRemoteDeviceInfoPanelCommand = new RelayCommand(ToggleRemoteDeviceInfoPanel, CanToggleRemoteDeviceInfoPanel);
         ToggleRemoteSessionOverlayCommand = new RelayCommand(ToggleRemoteSessionOverlay);
+        RestartForUpdateCommand = new RelayCommand(RestartForUpdate, CanRestartForUpdate);
+        RestartUpdateLaterCommand = new RelayCommand(() => _appUpdaterService.RestartLater(), () => IsUpdateRestartDialogVisible);
 
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -226,9 +241,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         };
         _persistDebounceTimer.Tick += PersistDebounceTimerOnTick;
         _remoteClientService.SessionInfoChanged += OnRemoteSessionInfoChanged;
+        _appUpdaterService.StatusChanged += OnAppUpdaterStatusChanged;
 
         ApplySettingsSnapshot(_appSettingsStore.Load(), persistToDisk: false);
         ApplyRemoteSessionInfo(_remoteClientService.SessionInfo);
+        ApplyAppUpdateStatus(_appUpdaterService.CurrentStatus);
         _remoteClientService.SetAutoReconnect(AutoReconnectRemote);
         _remoteClientService.Start();
     }
@@ -314,6 +331,74 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public IRelayCommand ToggleRemoteDeviceInfoPanelCommand { get; }
 
     public IRelayCommand ToggleRemoteSessionOverlayCommand { get; }
+
+    public IRelayCommand RestartForUpdateCommand { get; }
+
+    public IRelayCommand RestartUpdateLaterCommand { get; }
+
+    public string AppVersionText
+    {
+        get => _appVersionText;
+        private set => SetProperty(ref _appVersionText, value);
+    }
+
+    public string AppInstallTypeText
+    {
+        get => _appInstallTypeText;
+        private set => SetProperty(ref _appInstallTypeText, value);
+    }
+
+    public string AppUpdateStatusTitle
+    {
+        get => _appUpdateStatusTitle;
+        private set => SetProperty(ref _appUpdateStatusTitle, value);
+    }
+
+    public string AppUpdateStatusDetail
+    {
+        get => _appUpdateStatusDetail;
+        private set => SetProperty(ref _appUpdateStatusDetail, value);
+    }
+
+    public string AppPendingVersionText
+    {
+        get => _appPendingVersionText;
+        private set => SetProperty(ref _appPendingVersionText, value);
+    }
+
+    public string AppUpdateSummaryText
+    {
+        get => _appUpdateSummaryText;
+        private set => SetProperty(ref _appUpdateSummaryText, value);
+    }
+
+    public bool HasPendingVersion
+    {
+        get => _hasPendingVersion;
+        private set => SetProperty(ref _hasPendingVersion, value);
+    }
+
+    public bool HasUpdateSummary
+    {
+        get => _hasUpdateSummary;
+        private set => SetProperty(ref _hasUpdateSummary, value);
+    }
+
+    public bool IsUpdateRestartDialogVisible
+    {
+        get => _isUpdateRestartDialogVisible;
+        private set
+        {
+            if (!SetProperty(ref _isUpdateRestartDialogVisible, value))
+            {
+                return;
+            }
+
+            RestartForUpdateCommand.NotifyCanExecuteChanged();
+            RestartUpdateLaterCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(IsAnyOverlayVisible));
+        }
+    }
 
     public string StatusText
     {
@@ -1144,7 +1229,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool IsAnyOverlayVisible =>
         IsOverlayVisible
-        || IsRemoteSessionOverlayVisible;
+        || IsRemoteSessionOverlayVisible
+        || IsUpdateRestartDialogVisible;
 
     public bool IsCalibrateOverlayOpen => _activeOverlay == OverlaySurface.Calibrate;
 
@@ -1205,6 +1291,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public void Start()
     {
         StartMonitoring();
+        _ = _appUpdaterService.InitializeAsync(CancellationToken.None);
     }
 
     public void Stop()
@@ -1295,6 +1382,49 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _persistDebounceTimer.Stop();
         _persistDebounceTimer.Tick -= PersistDebounceTimerOnTick;
         _remoteClientService.SessionInfoChanged -= OnRemoteSessionInfoChanged;
+        _appUpdaterService.StatusChanged -= OnAppUpdaterStatusChanged;
+    }
+
+    private bool CanRestartForUpdate()
+    {
+        return IsUpdateRestartDialogVisible;
+    }
+
+    private void RestartForUpdate()
+    {
+        _appUpdaterService.RestartNow();
+    }
+
+    private void OnAppUpdaterStatusChanged(AppUpdateStatusSnapshot status)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            ApplyAppUpdateStatus(status);
+            return;
+        }
+
+        dispatcher.BeginInvoke(DispatcherPriority.DataBind, new Action(() => ApplyAppUpdateStatus(status)));
+    }
+
+    private void ApplyAppUpdateStatus(AppUpdateStatusSnapshot status)
+    {
+        AppVersionText = status.DisplayVersion;
+        AppInstallTypeText = status.InstallKind switch
+        {
+            AppInstallKind.Velopack => "Velopack",
+            AppInstallKind.LegacyInstaller => "Legacy Installer",
+            _ => "Development Build",
+        };
+        AppUpdateStatusTitle = status.StatusTitle;
+        AppUpdateStatusDetail = status.StatusDetail;
+        AppPendingVersionText = status.TargetVersion ?? string.Empty;
+        AppUpdateSummaryText = status.ReleaseSummary ?? string.Empty;
+        HasPendingVersion = !string.IsNullOrWhiteSpace(status.TargetVersion);
+        HasUpdateSummary = status.IsUpdateSummaryVisible && !string.IsNullOrWhiteSpace(status.ReleaseSummary);
+        IsUpdateRestartDialogVisible = status.IsRestartDialogVisible;
+        RestartForUpdateCommand.NotifyCanExecuteChanged();
+        RestartUpdateLaterCommand.NotifyCanExecuteChanged();
     }
 
     private async void RefreshTimerOnTick(object? sender, EventArgs e)
@@ -1568,7 +1698,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                     _audioSessionService.SetVolume,
                     _audioSessionService.SetMute,
                     _audioSessionService.SetPreferredPlaybackDevice,
-                    _audioSessionService.SetPreferredCaptureDevice);
+                    _audioSessionService.SetPreferredCaptureDevice,
+                    SetAppPinned);
                 _viewModelLookup[model.ProcessId] = viewModel;
                 Sessions.Insert(index, viewModel);
             }
@@ -2484,6 +2615,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             AutoMuteMicOnSoundboard = snapshot.AutoMuteMicOnSoundboard;
             DebugMode = snapshot.DebugMode;
             IsDarkTheme = snapshot.IsDarkTheme;
+            ApplyPinnedAppKeys(snapshot.PinnedAppKeys);
             ApplySelectedAgent(snapshot.SelectedAgentKey);
             SelectedCalibrationMode = string.IsNullOrWhiteSpace(snapshot.SelectedCalibrationMode) ? "Adaptive" : snapshot.SelectedCalibrationMode;
             SelectedCalibrationOption = string.IsNullOrWhiteSpace(snapshot.SelectedCalibrationOption) ? "Balanced" : snapshot.SelectedCalibrationOption;
@@ -2534,7 +2666,64 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             SelectedCalibrationOption = SelectedCalibrationOption,
             AppliedCalibrationLabel = AppliedCalibrationLabel,
             CustomBackground = CustomBackground,
+            PinnedAppKeys = _pinnedAppKeys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase).ToList(),
         };
+    }
+
+    private void SetAppPinned(string appKey, bool isPinned)
+    {
+        var normalized = AppAudioModel.CreateIdentityKey(appKey);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return;
+        }
+
+        var changed = isPinned
+            ? _pinnedAppKeys.Add(normalized)
+            : _pinnedAppKeys.Remove(normalized);
+
+        if (!changed)
+        {
+            SyncPinnedAppVisualState(normalized, isPinned);
+            return;
+        }
+
+        _audioSessionService.SetPinnedAppKeys(_pinnedAppKeys);
+        SyncPinnedAppVisualState(normalized, isPinned);
+        PersistSettingsIfReady();
+    }
+
+    private void ApplyPinnedAppKeys(IEnumerable<string>? appKeys)
+    {
+        _pinnedAppKeys.Clear();
+        if (appKeys is not null)
+        {
+            foreach (var appKey in appKeys)
+            {
+                var normalized = AppAudioModel.CreateIdentityKey(appKey);
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    _pinnedAppKeys.Add(normalized);
+                }
+            }
+        }
+
+        _audioSessionService.SetPinnedAppKeys(_pinnedAppKeys);
+        foreach (var session in Sessions)
+        {
+            session.SetPinnedVisualState(_pinnedAppKeys.Contains(session.AppKey));
+        }
+    }
+
+    private void SyncPinnedAppVisualState(string normalizedAppKey, bool isPinned)
+    {
+        foreach (var session in Sessions)
+        {
+            if (string.Equals(session.AppKey, normalizedAppKey, StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetPinnedVisualState(isPinned);
+            }
+        }
     }
 
     private bool TryApplyCustomBackground(string? value, bool showValidationMessage)

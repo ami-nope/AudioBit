@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AudioBit.Core\AudioBit.Core.csproj" />
     <ProjectReference Include="..\AudioBit.Installer\AudioBit.Installer.csproj" />
   </ItemGroup>
 

@@ -154,6 +154,60 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SessionPinOrbToggleStyle" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Grid x:Name="RootGrid"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Ellipse x:Name="Halo"
+                                     Width="20"
+                                     Height="20"
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Center"
+                                     Fill="{DynamicResource UtilityButtonBrush}"
+                                     Stroke="{DynamicResource UtilityButtonBorderBrush}"
+                                     StrokeThickness="1"
+                                     Opacity="0.94" />
+
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Halo" Property="Fill" Value="{DynamicResource UtilityButtonHoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Halo" Property="Fill" Value="#28FF8D33" />
+                                <Setter TargetName="Halo" Property="Stroke" Value="{DynamicResource AccentOrangeBrush}" />
+                                <Setter TargetName="Halo" Property="Opacity" Value="1" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentOrangeBrush}" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="IsChecked" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Halo" Property="Fill" Value="#34FF9947" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="RootGrid" Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SpectrumBarStyle" TargetType="{x:Type Border}">
             <Setter Property="Margin" Value="0,0,1,0" />
             <Setter Property="CornerRadius" Value="2.5" />
@@ -371,18 +425,48 @@
                         IsHitTestVisible="False"
                         Opacity="0" />
 
+                <ToggleButton Width="24"
+                              Height="24"
+                              Margin="0,-2,-2,0"
+                              HorizontalAlignment="Right"
+                              VerticalAlignment="Top"
+                              IsChecked="{Binding IsPinned, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              Style="{StaticResource SessionPinOrbToggleStyle}"
+                              ToolTip="{Binding PinToolTip}">
+                    <Grid Width="14"
+                          Height="14"
+                          RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <RotateTransform Angle="-18" />
+                        </Grid.RenderTransform>
+                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                              Data="M6.2,3.3 L11.8,3.3 L13.3,6.8 L9,10.3 L4.7,6.8 Z" />
+                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                              StrokeThickness="1.3"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              Data="M9,10.2 L9,15" />
+                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                              StrokeThickness="1.3"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              Data="M6.3,6.2 L11.7,6.2" />
+                    </Grid>
+                </ToggleButton>
+
                 <Grid Margin="10,7,10,6">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
                         <Border Width="32"
                                 Height="32"
@@ -408,6 +492,35 @@
                                    TextTrimming="CharacterEllipsis" />
 
                         <ToggleButton Grid.Column="2"
+                                      Width="24"
+                                      Height="24"
+                                      Margin="0,1,6,0"
+                                      VerticalAlignment="Top"
+                                      IsChecked="{Binding IsPinned, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Style="{StaticResource SessionPinOrbToggleStyle}"
+                                      ToolTip="{Binding PinToolTip}">
+                            <Grid Width="14"
+                                  Height="14"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <RotateTransform Angle="-18" />
+                                </Grid.RenderTransform>
+                                <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                                      Data="M6.2,3.3 L11.8,3.3 L13.3,6.8 L9,10.3 L4.7,6.8 Z" />
+                                <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                                      StrokeThickness="1.3"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      Data="M9,10.2 L9,15" />
+                                <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                                      StrokeThickness="1.3"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      Data="M6.3,6.2 L11.7,6.2" />
+                            </Grid>
+                        </ToggleButton>
+
+                        <ToggleButton Grid.Column="3"
                                       Margin="0,1,0,0"
                                       VerticalAlignment="Top"
                                       IsChecked="{Binding IsMuted, Mode=TwoWay}"

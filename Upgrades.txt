@@ -1,5 +1,7 @@
 test un command ----- dotnet run --project .\AudioBit.App\AudioBit.App.csproj
 
+.\scripts\Release-Velopack.ps1
+
 
 
 
@@ -17,18 +19,6 @@ test un command ----- dotnet run --project .\AudioBit.App\AudioBit.App.csproj
 -A useful companion is device hotkeys. A single keyboard shortcut could instantly switch the entire system output device.
 
 
--Profiles are extremely useful. Users could create configurations like:
-
-Gaming profile
-Discord louder, music quieter
-
-Streaming profile
-Game medium, Discord loud, browser muted
-
-Work profile
-Zoom loud, everything else muted
-
-Profiles can activate manually or automatically when a specific program launches.
 
 -Add drag-to-reorder rows. Users often want Discord and Spotify pinned to the top.
 
@@ -48,3 +38,155 @@ When a chosen app produces audio, automatically mute others.
 
 
 
+add a spotify extebsion that shows the current track and allows basic playback
+ controls directly from the AudioBit interface. This would enhance the user experience 
+ by integrating popular music streaming services seamlessly into the audio management workflow.
+ like make the ui by a side small liek a bookmark to the side of the app with rounded corner and with a spotify icon and a hover effect 
+ that expands the bookmark to show the current track, artist, and playback controls (play/pause, next, previous). 
+ This would allow users to control their music without switching to the Spotify app, making it more convenient while managing their audio settings in AudioBit.
+ also make this available in remote control mode so users can control Spotify from their phone when 
+ paired with AudioBit. through the relay or a different spotify API integration for mobile control.
+
+
+
+
+ 
+
+NEW COMMANDS ADDED FOR VERSIONING AND RELEASES
+
+- CI build/test commands:
+dotnet restore AudioBit.sln
+dotnet build AudioBit.sln -c Debug --no-restore
+dotnet test AudioBit.Installer.Tests\AudioBit.Installer.Tests.csproj -c Debug
+
+- Release build/test commands:
+dotnet restore AudioBit.sln
+dotnet build AudioBit.sln -c Release --no-restore
+dotnet test AudioBit.Installer.Tests\AudioBit.Installer.Tests.csproj -c Release
+
+- Install Velopack CLI:
+dotnet tool install --global vpk --version 0.0.1298
+
+- Publish the app for a version:
+dotnet publish AudioBit.App\AudioBit.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:Version=X.Y.Z -p:AssemblyVersion=X.Y.Z -p:FileVersion=X.Y.Z -p:InformationalVersion=X.Y.Z -o publish\win-x64
+
+- Download previous Velopack release metadata:
+vpk download github --repoUrl https://github.com/ami-nope/AudioBit
+
+- Pack a Velopack release:
+vpk pack --packId AudioBit --packTitle AudioBit --packVersion X.Y.Z --channel stable --packDir publish\win-x64 --mainExe AudioBit.App.exe --icon AudioBit.App\Assets\AudioBit.ico --outputDir Releases
+
+- Upload and publish the GitHub release:
+vpk upload github --repoUrl https://github.com/ami-nope/AudioBit --publish --releaseName "AudioBit X.Y.Z" --tag X.Y.Z
+
+- Git version tag commands:
+git add .
+git commit -m "Release X.Y.Z"
+git tag X.Y.Z
+git push origin main
+git push origin X.Y.Z
+
+
+STEP BY STEP: HOW TO MAKE THE NEXT VERSION AND RELEASE
+
+1. Pick the next version number in semver format.
+Example: if the current release is 1.4.0, the next one might be 1.4.1 or 1.5.0.
+
+2. Finish the code changes you want in that release and verify the app still builds.
+Use:
+dotnet restore AudioBit.sln
+dotnet build AudioBit.sln -c Debug --no-restore
+dotnet test AudioBit.Installer.Tests\AudioBit.Installer.Tests.csproj -c Debug
+
+3. Commit the release-ready changes.
+Use:
+git add .
+git commit -m "Release X.Y.Z"
+
+4. Create the Git tag for that exact version.
+Use:
+git tag X.Y.Z
+
+5. Push the main branch and then push the version tag.
+Use:
+git push origin main
+git push origin X.Y.Z
+
+6. The GitHub Actions workflow .github/workflows/release-velopack.yml will run automatically from the tag push.
+It does all of this:
+- reads the version from the tag
+- builds the app in Release
+- runs tests
+- publishes the app for win-x64
+- packs the Velopack release
+- uploads the release to https://github.com/ami-nope/AudioBit/releases
+
+7. After the workflow finishes, open the GitHub Releases page and confirm the new release exists.
+The tag should be in one of these formats:
+X.Y
+X.Y.Z
+Legacy tags also accepted:
+vX.Y
+vX.Y.Z
+Example:
+1.5
+
+8. Users must install the Velopack setup build from GitHub Releases to get automatic updates.
+Legacy installs from the old custom installer do not auto-update.
+
+9. AudioBit checks GitHub Releases on app launch only.
+If a newer stable version exists, it downloads silently and asks for restart after download finishes.
+
+
+LOCAL MANUAL RELEASE COMMAND FLOW
+
+If you want to package locally before or instead of GitHub Actions, use:
+
+dotnet tool install --global vpk --version 0.0.1298
+dotnet restore AudioBit.sln
+dotnet build AudioBit.sln -c Release --no-restore
+dotnet test AudioBit.Installer.Tests\AudioBit.Installer.Tests.csproj -c Release
+dotnet publish AudioBit.App\AudioBit.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:Version=X.Y.Z -p:AssemblyVersion=X.Y.Z -p:FileVersion=X.Y.Z -p:InformationalVersion=X.Y.Z -o publish\win-x64
+vpk download github --repoUrl https://github.com/ami-nope/AudioBit
+vpk pack --packId AudioBit --packTitle AudioBit --packVersion X.Y.Z --channel stable --packDir publish\win-x64 --mainExe AudioBit.App.exe --icon AudioBit.App\Assets\AudioBit.ico --outputDir Releases
+vpk upload github --repoUrl https://github.com/ami-nope/AudioBit --publish --releaseName "AudioBit X.Y.Z" --tag X.Y.Z
+
+
+IMPORTANT NOTES
+
+- The shared app version now comes from Directory.Build.props.
+- Local/dev default version is 0.0.0-local unless overridden by release publishing.
+- Release tags now support X.Y or X.Y.Z directly.
+- Legacy vX.Y and vX.Y.Z tags are still accepted.
+- The supported updater release path is now Velopack.
+- scripts\Publish-Release.ps1 is now legacy/manual for the old custom installer path, not the new auto-updating release flow.
+
+
+ONE COMMAND VELOPACK RELEASE
+
+Preferred command:
+.\scripts\Release-Velopack.ps1
+
+What it does automatically:
+- reads version.json
+- takes the currentVersion value
+- increases the last number by 1
+- writes the new version back into version.json
+- runs restore, release build, and tests
+- stages all current repo changes
+- creates a commit named:
+Release X.Y or Release X.Y.Z
+- creates the matching git tag
+- pushes the branch and the tag
+- triggers the GitHub Actions Velopack release workflow
+
+Examples:
+- 1.6 becomes 1.7
+- 1.9 becomes 1.10
+- 1.6.4 becomes 1.6.5
+
+Important:
+- version.json is now the release source of truth for the one-command flow.
+- the workflow checks that the pushed tag and version.json match exactly.
+- the updater detects installed Velopack builds after users install from the GitHub release setup package.
+- local dev builds are still not treated as updater-managed installs.

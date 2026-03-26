@@ -3,13 +3,13 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Windows.Media.Imaging;
+using AudioBit.Core;
 using QRCoder;
 
 namespace AudioBit.App.Services;
 
 internal sealed class QrCodeService
 {
-    private const string RemoteConnectBaseUrl = "https://audiobit-remote.vercel.app/connect";
     private const int ModuleSize = 12;
     private const int QuietZoneModules = 1;
     private const float ModuleInsetRatio = 0.075f;
@@ -24,6 +24,13 @@ internal sealed class QrCodeService
     private static readonly Color CenterLogoBottomColor = Color.FromArgb(255, 255, 122, 16);
     private static readonly Color CenterLogoBorderColor = Color.FromArgb(255, 182, 85, 18);
     private static readonly Color CenterLogoWaveColor = Color.FromArgb(250, 250, 250);
+    private readonly Uri _remoteConnectBaseUri;
+
+    public QrCodeService(ExternalLinksConfiguration externalLinks)
+    {
+        ArgumentNullException.ThrowIfNull(externalLinks);
+        _remoteConnectBaseUri = externalLinks.RemoteConnectBaseUri;
+    }
 
     public string BuildPairUrl(string? sid, string? pairCode)
     {
@@ -32,7 +39,15 @@ internal sealed class QrCodeService
             return string.Empty;
         }
 
-        return $"{RemoteConnectBaseUrl}?sid={Uri.EscapeDataString(sid)}&code={Uri.EscapeDataString(pairCode)}";
+        var existingQuery = string.Empty;
+        var builder = new UriBuilder(_remoteConnectBaseUri);
+        if (!string.IsNullOrWhiteSpace(builder.Query))
+        {
+            existingQuery = builder.Query.TrimStart('?') + "&";
+        }
+
+        builder.Query = $"{existingQuery}sid={Uri.EscapeDataString(sid)}&code={Uri.EscapeDataString(pairCode)}";
+        return builder.Uri.AbsoluteUri;
     }
 
     public BitmapSource? GeneratePairQr(string sid, string pairCode)

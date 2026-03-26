@@ -48,6 +48,7 @@ public sealed class AppAudioViewModel : ObservableObject
     private readonly Action<int, bool> _setMute;
     private readonly Action<int, string?> _setPreferredPlaybackDevice;
     private readonly Action<int, string?> _setPreferredCaptureDevice;
+    private readonly Action<string, bool> _setPinned;
     private readonly DispatcherTimer _remoteVolumeAnimationTimer;
 
     private bool _isApplyingSnapshot;
@@ -68,6 +69,8 @@ public sealed class AppAudioViewModel : ObservableObject
     private DateTime _lastAudioTime = DateTime.UtcNow;
     private double _opacity = 1.0;
     private Brush _accentBrush = FallbackAccentBrushes[0];
+    private string _appKey = string.Empty;
+    private bool _isPinned;
     private string _selectedPlaybackDeviceId = string.Empty;
     private string _selectedCaptureDeviceId = string.Empty;
     private DateTime _remoteVolumeAnimationStartedUtc;
@@ -80,7 +83,8 @@ public sealed class AppAudioViewModel : ObservableObject
         Action<int, float> setVolume,
         Action<int, bool> setMute,
         Action<int, string?> setPreferredPlaybackDevice,
-        Action<int, string?> setPreferredCaptureDevice)
+        Action<int, string?> setPreferredCaptureDevice,
+        Action<string, bool> setPinned)
     {
         PlaybackDevices = playbackDevices;
         CaptureDevices = captureDevices;
@@ -88,6 +92,7 @@ public sealed class AppAudioViewModel : ObservableObject
         _setMute = setMute;
         _setPreferredPlaybackDevice = setPreferredPlaybackDevice;
         _setPreferredCaptureDevice = setPreferredCaptureDevice;
+        _setPinned = setPinned;
         _remoteVolumeAnimationTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = RemoteVolumeAnimationFrameInterval,
@@ -217,6 +222,33 @@ public sealed class AppAudioViewModel : ObservableObject
         private set => SetProperty(ref _accentBrush, value);
     }
 
+    public string AppKey
+    {
+        get => _appKey;
+        private set => SetProperty(ref _appKey, value);
+    }
+
+    public bool IsPinned
+    {
+        get => _isPinned;
+        set
+        {
+            if (!SetProperty(ref _isPinned, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(PinToolTip));
+
+            if (_isApplyingSnapshot || string.IsNullOrWhiteSpace(AppKey))
+            {
+                return;
+            }
+
+            _setPinned(AppKey, value);
+        }
+    }
+
     public string SelectedPlaybackDeviceId
     {
         get => _selectedPlaybackDeviceId;
@@ -271,12 +303,15 @@ public sealed class AppAudioViewModel : ObservableObject
 
     public string VolumePercentText => $"{Math.Round(Volume * 100):0}%";
 
+    public string PinToolTip => IsPinned ? "Unpin app" : "Pin app";
+
     public void Apply(AppAudioModel model)
     {
         _isApplyingSnapshot = true;
 
         ProcessId = model.ProcessId;
         AppName = model.AppName;
+        AppKey = model.AppKey;
         Icon = model.Icon;
         if (ShouldApplySnapshotVolume(model.Volume))
         {
@@ -288,6 +323,7 @@ public sealed class AppAudioViewModel : ObservableObject
         LastAudioTime = model.LastAudioTime;
         Opacity = model.Opacity;
         AccentBrush = ResolveAccentBrush(model.AppName);
+        IsPinned = model.IsPinned;
         SelectedPlaybackDeviceId = model.PreferredRenderDeviceId;
         SelectedCaptureDeviceId = model.PreferredCaptureDeviceId;
 
@@ -523,6 +559,13 @@ public sealed class AppAudioViewModel : ObservableObject
     {
         _isApplyingSnapshot = true;
         IsMuted = isMuted;
+        _isApplyingSnapshot = false;
+    }
+
+    public void SetPinnedVisualState(bool isPinned)
+    {
+        _isApplyingSnapshot = true;
+        IsPinned = isPinned;
         _isApplyingSnapshot = false;
     }
 

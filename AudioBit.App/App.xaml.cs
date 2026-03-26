@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using AudioBit.App.Infrastructure;
 using AudioBit.App.Services;
@@ -10,6 +11,7 @@ public partial class App : Application
 {
     private AudioSessionService? _audioSessionService;
     private RemoteClientService? _remoteClientService;
+    private AppUpdaterService? _appUpdaterService;
     private MainViewModel? _mainViewModel;
     private AppSettingsStore? _appSettingsStore;
     private StartupRegistrationService? _startupRegistrationService;
@@ -20,12 +22,21 @@ public partial class App : Application
 
         ShutdownMode = ShutdownMode.OnMainWindowClose;
 
+        var externalLinks = ExternalLinksConfigurationLoader.Load(
+            localFallbackPath: Path.Combine(AppContext.BaseDirectory, "external-links.json"));
         _audioSessionService = new AudioSessionService();
-        _remoteClientService = new RemoteClientService(_audioSessionService);
-        var qrCodeService = new QrCodeService();
+        _remoteClientService = new RemoteClientService(_audioSessionService, externalLinks);
+        _appUpdaterService = new AppUpdaterService();
+        var qrCodeService = new QrCodeService(externalLinks);
         _appSettingsStore = new AppSettingsStore();
         _startupRegistrationService = new StartupRegistrationService();
-        _mainViewModel = new MainViewModel(_audioSessionService, _remoteClientService, qrCodeService, _appSettingsStore, _startupRegistrationService);
+        _mainViewModel = new MainViewModel(
+            _audioSessionService,
+            _remoteClientService,
+            qrCodeService,
+            _appSettingsStore,
+            _startupRegistrationService,
+            _appUpdaterService);
 
         var mainWindow = new MainWindow(_mainViewModel);
         MainWindow = mainWindow;
@@ -35,6 +46,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _mainViewModel?.Dispose();
+        _appUpdaterService?.Dispose();
         _remoteClientService?.Dispose();
         _audioSessionService?.Dispose();
         base.OnExit(e);

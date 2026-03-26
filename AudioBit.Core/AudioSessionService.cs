@@ -33,6 +33,7 @@ public sealed class AudioSessionService : IDisposable
     private readonly Dictionary<int, DeviceRouteCacheEntry> _deviceRouteCache = new();
     private readonly Dictionary<string, AppRoutePreference> _routePreferencesByAppKey = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ImageSource> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _pinnedAppKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, SessionGroup> _liveGroupsBuffer = new();
     private readonly HashSet<int> _visibleProcessIdsBuffer = new();
     private readonly List<int> _expiredProcessIdsBuffer = new();
@@ -272,9 +273,11 @@ public sealed class AudioSessionService : IDisposable
 
             foreach (var group in liveGroups.Values)
             {
+                var appKey = AppAudioModel.CreateIdentityKey(group.AppName);
+                var isPinned = !string.IsNullOrWhiteSpace(appKey) && _pinnedAppKeys.Contains(appKey);
                 if (!_appsByProcessId.TryGetValue(group.ProcessId, out var model))
                 {
-                    if (group.Peak <= AppAudioModel.SilenceThreshold)
+                    if (group.Peak <= AppAudioModel.SilenceThreshold && !isPinned)
                     {
                         continue;
                     }
@@ -287,6 +290,7 @@ public sealed class AudioSessionService : IDisposable
                         Volume = group.AverageVolume,
                         IsMuted = group.IsMuted,
                         LastAudioTime = now,
+                        IsPinned = isPinned,
                     };
 
                     _appsByProcessId[group.ProcessId] = model;
@@ -294,6 +298,7 @@ public sealed class AudioSessionService : IDisposable
 
                 model.AppName = group.AppName;
                 model.Icon = group.Icon;
+                model.IsPinned = isPinned;
 
                 // Skip overwriting volume/mute if user just wrote them recently.
                 var skipVolumeOverwrite = _volumeWriteTimestamps.TryGetValue(group.ProcessId, out var volTs)
@@ -343,6 +348,11 @@ public sealed class AudioSessionService : IDisposable
                 }
 
                 if (model.IsMuted && _visibleProcessIdsBuffer.Contains(model.ProcessId))
+                {
+                    continue;
+                }
+
+                if (model.IsPinned && _visibleProcessIdsBuffer.Contains(model.ProcessId))
                 {
                     continue;
                 }
@@ -427,6 +437,30 @@ public sealed class AudioSessionService : IDisposable
     public void SetPreferredCaptureDevice(int processId, string? deviceId)
     {
         SetPreferredDevice(processId, AudioDeviceFlow.Capture, deviceId);
+    }
+
+    public void SetPinnedAppKeys(IEnumerable<string> appKeys)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(appKeys);
+
+        lock (_syncRoot)
+        {
+            _pinnedAppKeys.Clear();
+            foreach (var appKey in appKeys)
+            {
+                var normalized = AppAudioModel.CreateIdentityKey(appKey);
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    _pinnedAppKeys.Add(normalized);
+                }
+            }
+
+            foreach (var model in _appsByProcessId.Values)
+            {
+                model.IsPinned = !string.IsNullOrWhiteSpace(model.AppKey) && _pinnedAppKeys.Contains(model.AppKey);
+            }
+        }
     }
 
     public void SetAllMuted(bool isMuted)
@@ -1257,20 +1291,12 @@ public sealed class AudioSessionService : IDisposable
             return string.Empty;
         }
 
-        return NormalizeAppRouteKey(model.AppName);
+        return AppAudioModel.CreateIdentityKey(model.AppName);
     }
 
     private static string NormalizeAppRouteKey(string? appName)
     {
-        if (string.IsNullOrWhiteSpace(appName))
-        {
-            return string.Empty;
-        }
-
-        var normalized = appName.Trim();
-        return normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? normalized[..^4]
-            : normalized;
+        return AppAudioModel.CreateIdentityKey(appName);
     }
 
     private static TimeSpan GetRouteWriteRetryDelay(int failureCount)

@@ -1,0 +1,117 @@
+name: Release Velopack
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".Trim()
+          $version = if ($tag.StartsWith("v")) { $tag.Substring(1) } else { $tag }
+
+          if ($version -notmatch '^\d+\.\d+(?:\.\d+)?$') {
+            throw "Release tags must use X.Y or X.Y.Z, optionally prefixed with v."
+          }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Validate version.json
+        shell: pwsh
+        run: |
+          $versionState = Get-Content version.json -Raw | ConvertFrom-Json
+          $currentVersion = [string]$versionState.currentVersion
+
+          if ([string]::IsNullOrWhiteSpace($currentVersion))
+          {
+            throw "version.json must contain currentVersion."
+          }
+
+          if ($currentVersion -ne "${{ steps.version.outputs.version }}")
+          {
+            throw "version.json currentVersion '$currentVersion' does not match release tag '${{ steps.version.outputs.version }}'."
+          }
+
+      - name: Install vpk
+        shell: pwsh
+        run: |
+          dotnet tool install --global vpk --version 0.0.1298
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Restore solution
+        run: dotnet restore AudioBit.sln
+
+      - name: Build solution
+        run: dotnet build AudioBit.sln -c Release --no-restore
+
+      - name: Run installer tests
+        run: dotnet test AudioBit.Installer.Tests\AudioBit.Installer.Tests.csproj -c Release
+
+      - name: Publish AudioBit app
+        shell: pwsh
+        run: |
+          dotnet publish AudioBit.App\AudioBit.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=false `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -p:AssemblyVersion=${{ steps.version.outputs.version }} `
+            -p:FileVersion=${{ steps.version.outputs.version }} `
+            -p:InformationalVersion=${{ steps.version.outputs.version }} `
+            -o publish\win-x64
+
+      - name: Download previous Velopack releases
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          vpk download github `
+            --repoUrl https://github.com/${{ github.repository }}
+
+      - name: Pack Velopack release
+        shell: pwsh
+        run: |
+          vpk pack `
+            --packId AudioBit `
+            --packTitle AudioBit `
+            --packVersion ${{ steps.version.outputs.version }} `
+            --channel stable `
+            --packDir publish\win-x64 `
+            --mainExe AudioBit.App.exe `
+            --icon AudioBit.App\Assets\AudioBit.ico `
+            --outputDir Releases
+
+      - name: Upload GitHub release
+        shell: pwsh
+        run: |
+          vpk upload github `
+            --repoUrl https://github.com/${{ github.repository }} `
+            --publish `
+            --releaseName "AudioBit ${{ steps.version.outputs.version }}" `
+            --tag ${{ steps.version.outputs.tag }}

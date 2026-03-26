@@ -12,6 +12,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AudioBit.Core\AudioBit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\external-links.json" Link="external-links.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Assets\AudioBit.ico" />
   </ItemGroup>
 

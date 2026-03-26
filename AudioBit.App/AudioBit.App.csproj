@@ -6,11 +6,18 @@
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\AudioBit.ico</ApplicationIcon>
+    <StartupObject>AudioBit.App.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AudioBit.Core\AudioBit.Core.csproj" />
     <ProjectReference Include="..\AudioBit.UI\AudioBit.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\external-links.json" Link="external-links.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -21,6 +28,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="Velopack" Version="0.0.1298" />
     <PackageReference Include="WPF-UI.Tray" Version="4.2.0" />
   </ItemGroup>
 </Project>
