@@ -6,7 +6,7 @@
     "ws_url": "wss://audiobit-relay-production.up.railway.app/ws"
   },
   "remote_web": {
-    "connect_base_url": "https://audiobit-remote.vercel.app/connection"
+    "connect_base_url": "https://audiobit-remote.vercel.app/connections"
   },
   "services": {
     "geo_ip_lookup_url_template": "https://ipapi.co/{ip}/json/"
