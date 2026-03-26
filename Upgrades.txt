@@ -168,6 +168,7 @@ Preferred command:
 .\scripts\Release-Velopack.ps1
 
 What it does automatically:
+- syncs with origin/current-branch first so the release commit is based on the latest remote branch
 - reads version.json
 - takes the currentVersion value
 - increases the last number by 1

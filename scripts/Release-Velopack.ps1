@@ -40,6 +40,56 @@ function Get-NextVersion([string]$CurrentVersion)
     return ($parts -join '.')
 }
 
+function Sync-BranchWithOrigin([string]$BranchName)
+{
+    Invoke-Tool "git" @("fetch", "origin", $BranchName) "git fetch failed."
+
+    $counts = Invoke-ToolCapture "git" @("rev-list", "--left-right", "--count", "HEAD...origin/$BranchName") "Unable to compare the local branch with origin."
+    $parts = $counts -split '\s+'
+    if ($parts.Length -lt 2)
+    {
+        throw "Unable to parse branch divergence information from git."
+    }
+
+    $aheadCount = [int]$parts[0]
+    $behindCount = [int]$parts[1]
+    if ($behindCount -le 0)
+    {
+        return
+    }
+
+    Write-Host "origin/$BranchName is ahead by $behindCount commit(s). Rebasing before release."
+
+    $statusBeforeSync = Invoke-ToolCapture "git" @("status", "--porcelain") "Unable to inspect the working tree."
+    $stashName = "release-velopack-autostash-" + [Guid]::NewGuid().ToString("N")
+    $stashCreated = $false
+
+    try
+    {
+        if (-not [string]::IsNullOrWhiteSpace($statusBeforeSync))
+        {
+            Invoke-Tool "git" @("stash", "push", "--include-untracked", "--message", $stashName) "git stash failed."
+            $stashCreated = $true
+        }
+
+        Invoke-Tool "git" @("pull", "--rebase", "origin", $BranchName) "git pull --rebase failed."
+
+        if ($stashCreated)
+        {
+            Invoke-Tool "git" @("stash", "pop") "git stash pop failed after rebasing."
+        }
+    }
+    catch
+    {
+        if ($stashCreated)
+        {
+            Write-Warning "Your local changes were stashed as '$stashName'. Reapply them after resolving the sync failure."
+        }
+
+        throw
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $versionFilePath = Join-Path $repoRoot "version.json"
 
@@ -74,6 +124,12 @@ try
         throw "Release-Velopack.ps1 must be run from a named branch, not a detached HEAD."
     }
 
+    if (-not $NoPush -and -not $DryRun)
+    {
+        $null = Invoke-ToolCapture "git" @("remote", "get-url", "origin") "The git remote 'origin' is not configured."
+        Sync-BranchWithOrigin $currentBranch
+    }
+
     $existingLocalTag = Invoke-ToolCapture "git" @("tag", "--list", $nextVersion) "Unable to query local git tags."
     if (-not [string]::IsNullOrWhiteSpace($existingLocalTag))
     {
@@ -82,8 +138,6 @@ try
 
     if (-not $NoPush)
     {
-        $null = Invoke-ToolCapture "git" @("remote", "get-url", "origin") "The git remote 'origin' is not configured."
-
         $existingRemoteTag = Invoke-ToolCapture "git" @("ls-remote", "--tags", "origin", "refs/tags/$nextVersion") "Unable to query remote git tags from origin."
         if (-not [string]::IsNullOrWhiteSpace($existingRemoteTag))
         {
@@ -147,6 +201,10 @@ catch
     if ($versionFileUpdated -and -not $commitCreated)
     {
         $originalVersionFileContent | Set-Content -Path $versionFilePath -Encoding utf8
+    }
+    elseif ($versionFileUpdated -and $commitCreated)
+    {
+        Invoke-Tool "git" @("restore", "--source=HEAD", "--", "version.json") "Unable to restore version.json after the release failed."
     }
 
     throw
