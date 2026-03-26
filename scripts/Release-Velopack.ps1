@@ -1,7 +1,8 @@
 param(
     [switch]$SkipTests,
     [switch]$NoPush,
-    [switch]$DryRun
+    [switch]$DryRun,
+    [int]$ReleaseWaitTimeoutMinutes = 20
 )
 
 Set-StrictMode -Version Latest
@@ -38,6 +39,50 @@ function Get-NextVersion([string]$CurrentVersion)
     $parts = $CurrentVersion.Split('.') | ForEach-Object { [int]$_ }
     $parts[$parts.Length - 1]++
     return ($parts -join '.')
+}
+
+function Get-GithubRepoSlug()
+{
+    $originUrl = Invoke-ToolCapture "git" @("remote", "get-url", "origin") "The git remote 'origin' is not configured."
+    $match = [regex]::Match($originUrl, '(?:github\.com[:/])(?<owner>[^/]+)/(?<repo>[^/.]+?)(?:\.git)?$')
+    if (-not $match.Success)
+    {
+        throw "Unable to determine the GitHub repository from origin '$originUrl'."
+    }
+
+    return "$($match.Groups['owner'].Value)/$($match.Groups['repo'].Value)"
+}
+
+function Wait-ForPublishedGitHubRelease([string]$RepositorySlug, [string]$TagName, [int]$TimeoutMinutes)
+{
+    $releaseApiUrl = "https://api.github.com/repos/$RepositorySlug/releases/tags/$TagName"
+    $deadline = [DateTime]::UtcNow.AddMinutes([Math]::Max(1, $TimeoutMinutes))
+
+    while ([DateTime]::UtcNow -lt $deadline)
+    {
+        try
+        {
+            $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'AudioBit-ReleaseScript' } -Uri $releaseApiUrl
+            $assetNames = @($release.assets | ForEach-Object { $_.name })
+            $hasSetupAsset = $assetNames | Where-Object { $_ -match 'setup.*\.exe$|.*setup\.exe$' }
+            $hasFeedAsset = $assetNames | Where-Object { $_ -match '^RELEASES' }
+            $hasPackageAsset = $assetNames | Where-Object { $_ -match '\.nupkg$' }
+            $hasNotes = -not [string]::IsNullOrWhiteSpace([string]$release.body)
+
+            if (-not $release.draft -and $hasSetupAsset -and $hasFeedAsset -and $hasPackageAsset -and $hasNotes)
+            {
+                return $release
+            }
+        }
+        catch
+        {
+            # Release may not exist yet while GitHub Actions is still running.
+        }
+
+        Start-Sleep -Seconds 15
+    }
+
+    throw "Timed out waiting for the GitHub release '$TagName' to publish with setup, feed, package assets, and release notes."
 }
 
 function Sync-BranchWithOrigin([string]$BranchName)
@@ -192,8 +237,12 @@ try
     Invoke-Tool "git" @("push", "origin", $currentBranch) "git push branch failed."
     Invoke-Tool "git" @("push", "origin", $nextVersion) "git push tag failed."
 
+    $repoSlug = Get-GithubRepoSlug
+    Write-Host "Waiting for GitHub Actions to publish release $nextVersion..."
+    $publishedRelease = Wait-ForPublishedGitHubRelease $repoSlug $nextVersion $ReleaseWaitTimeoutMinutes
+
     Write-Host "Release tag $nextVersion pushed."
-    Write-Host "GitHub Actions will build and publish the Velopack release."
+    Write-Host "Published release: $($publishedRelease.html_url)"
     Write-Host "Installed builds from that release will be detected by the in-app updater."
 }
 catch

@@ -180,6 +180,8 @@ Release X.Y or Release X.Y.Z
 - creates the matching git tag
 - pushes the branch and the tag
 - triggers the GitHub Actions Velopack release workflow
+- waits until the GitHub release exists publicly
+- verifies the published release includes setup installer, release notes, and Velopack feed assets
 
 Examples:
 - 1.6 becomes 1.7
@@ -189,5 +191,7 @@ Examples:
 Important:
 - version.json is now the release source of truth for the one-command flow.
 - the workflow checks that the pushed tag and version.json match exactly.
+- the workflow generates release-notes markdown and passes it into vpk pack so the app updater can read update notes.
+- the workflow explicitly verifies the setup installer asset and the RELEASES feed asset after publishing.
 - the updater detects installed Velopack builds after users install from the GitHub release setup package.
 - local dev builds are still not treated as updater-managed installs.

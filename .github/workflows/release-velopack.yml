@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+env:
+  VELOPACK_CHANNEL: stable
+  RELEASE_NOTES_PATH: artifacts/release-notes.md
+
 jobs:
   release:
     runs-on: windows-latest
@@ -41,6 +45,60 @@ jobs:
 
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Build release notes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path (Split-Path $env:RELEASE_NOTES_PATH -Parent) -Force | Out-Null
+
+          $currentTag = "${{ steps.version.outputs.tag }}"
+          $tagPattern = '^(?:v)?\d+\.\d+(?:\.\d+)?$'
+          $previousTag = git tag --merged HEAD --sort=-version:refname `
+            | Where-Object { $_ -match $tagPattern -and $_ -ne $currentTag } `
+            | Select-Object -First 1
+
+          $changes = if ([string]::IsNullOrWhiteSpace($previousTag))
+          {
+            git log --no-merges --pretty='- %s'
+          }
+          else
+          {
+            git log --no-merges --pretty='- %s' "$previousTag..HEAD"
+          }
+
+          $notes = New-Object System.Collections.Generic.List[string]
+          $notes.Add("# AudioBit ${{ steps.version.outputs.version }}")
+          $notes.Add("")
+          $notes.Add("Automated Velopack release for tag `${{ steps.version.outputs.tag }}`.")
+          $notes.Add("")
+          $notes.Add("## Included")
+          $notes.Add("")
+          $notes.Add("- Velopack setup bootstrapper for new installs")
+          $notes.Add("- Velopack update feed assets required by the in-app updater")
+          $notes.Add("- Stable release channel")
+          $notes.Add("")
+          $notes.Add("## Changes")
+          $notes.Add("")
+
+          if ($changes)
+          {
+            foreach ($line in $changes)
+            {
+              if (-not [string]::IsNullOrWhiteSpace($line))
+              {
+                $notes.Add($line)
+              }
+            }
+          }
+
+          if ($notes[$notes.Count - 1] -eq "## Changes" -or $notes[$notes.Count - 1] -eq "")
+          {
+            $notes.Add("- No commit summary was available for this release.")
+          }
+
+          $notes.Add("")
+          $notes.Add("Install using the Velopack setup asset to receive automatic updates.")
+          [System.IO.File]::WriteAllLines($env:RELEASE_NOTES_PATH, $notes)
 
       - name: Validate version.json
         shell: pwsh
@@ -92,6 +150,8 @@ jobs:
         shell: pwsh
         run: |
           vpk download github `
+            --channel $env:VELOPACK_CHANNEL `
+            --token ${{ secrets.GITHUB_TOKEN }} `
             --repoUrl https://github.com/${{ github.repository }}
 
       - name: Pack Velopack release
@@ -101,17 +161,98 @@ jobs:
             --packId AudioBit `
             --packTitle AudioBit `
             --packVersion ${{ steps.version.outputs.version }} `
-            --channel stable `
+            --channel $env:VELOPACK_CHANNEL `
             --packDir publish\win-x64 `
             --mainExe AudioBit.App.exe `
+            --releaseNotes $env:RELEASE_NOTES_PATH `
             --icon AudioBit.App\Assets\AudioBit.ico `
             --outputDir Releases
+
+      - name: Validate packaged Velopack assets
+        shell: pwsh
+        run: |
+          $releaseFiles = Get-ChildItem Releases -File
+          if (-not $releaseFiles)
+          {
+            throw "No files were generated in the Releases directory."
+          }
+
+          $setupAsset = $releaseFiles | Where-Object { $_.Name -match 'setup.*\.exe$|.*setup\.exe$' } | Select-Object -First 1
+          if (-not $setupAsset)
+          {
+            $setupAsset = $releaseFiles | Where-Object { $_.Extension -eq '.exe' } | Select-Object -First 1
+          }
+
+          $feedAsset = $releaseFiles | Where-Object { $_.Name -match '^RELEASES' } | Select-Object -First 1
+          $packageAsset = $releaseFiles | Where-Object { $_.Extension -eq '.nupkg' } | Select-Object -First 1
+
+          if (-not $setupAsset)
+          {
+            throw "Velopack did not generate a setup executable in the Releases directory."
+          }
+
+          if (-not $feedAsset)
+          {
+            throw "Velopack did not generate a RELEASES feed file in the Releases directory."
+          }
+
+          if (-not $packageAsset)
+          {
+            throw "Velopack did not generate a .nupkg package in the Releases directory."
+          }
+
+          "setup_asset=$($setupAsset.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "feed_asset=$($feedAsset.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "setup_asset_path=$($setupAsset.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        id: packaged_assets
 
       - name: Upload GitHub release
         shell: pwsh
         run: |
           vpk upload github `
+            --channel $env:VELOPACK_CHANNEL `
             --repoUrl https://github.com/${{ github.repository }} `
+            --token ${{ secrets.GITHUB_TOKEN }} `
             --publish `
+            --merge `
             --releaseName "AudioBit ${{ steps.version.outputs.version }}" `
-            --tag ${{ steps.version.outputs.tag }}
+            --tag ${{ steps.version.outputs.tag }} `
+            --targetCommitish ${{ github.sha }}
+
+      - name: Upload setup asset and publish release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ steps.version.outputs.tag }} "${{ steps.packaged_assets.outputs.setup_asset_path }}" --clobber
+          gh release edit ${{ steps.version.outputs.tag }} `
+            --title "AudioBit ${{ steps.version.outputs.version }}" `
+            --notes-file $env:RELEASE_NOTES_PATH `
+            --latest
+
+      - name: Verify published GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $release = gh release view ${{ steps.version.outputs.tag }} --json body,url,assets | ConvertFrom-Json
+          if ([string]::IsNullOrWhiteSpace($release.body))
+          {
+            throw "The GitHub release body is empty."
+          }
+
+          $assetNames = @($release.assets | ForEach-Object { $_.name })
+          $setupAssetName = "${{ steps.packaged_assets.outputs.setup_asset }}"
+          $feedAssetName = "${{ steps.packaged_assets.outputs.feed_asset }}"
+
+          if ($assetNames -notcontains $setupAssetName)
+          {
+            throw "The GitHub release is missing the setup asset '$setupAssetName'."
+          }
+
+          if ($assetNames -notcontains $feedAssetName)
+          {
+            throw "The GitHub release is missing the feed asset '$feedAssetName'."
+          }
+
+          Write-Host "Published release verified: $($release.url)"
