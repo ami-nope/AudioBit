@@ -1,8 +1,6 @@
 test un command ----- dotnet run --project .\AudioBit.App\AudioBit.App.csproj
 
-.\scripts\Release-Velopack.ps1
-
-
+.\scripts\Build-ReleaseBundle.ps1
 
 
 -redesign the entire UI using GPU-accelerated meters
@@ -159,7 +157,7 @@ IMPORTANT NOTES
 - Release tags now support X.Y or X.Y.Z directly.
 - Legacy vX.Y and vX.Y.Z tags are still accepted.
 - The supported updater release path is now Velopack.
-- scripts\Publish-Release.ps1 is now legacy/manual for the old custom installer path, not the new auto-updating release flow.
+- scripts\Publish-Release.ps1 now builds the custom AudioBit.Setup bootstrap installer with a Velopack portable payload so installs stay updater-friendly.
 
 
 ONE COMMAND VELOPACK RELEASE
@@ -195,3 +193,71 @@ Important:
 - the workflow explicitly verifies the setup installer asset and the RELEASES feed asset after publishing.
 - the updater detects installed Velopack builds after users install from the GitHub release setup package.
 - local dev builds are still not treated as updater-managed installs.
+
+
+LOCAL RELEASE BUNDLE ZIP
+
+Command:
+.\scripts\Build-ReleaseBundle.ps1
+
+What it does:
+- reads the current version from version.json unless -Version is passed
+- creates a folder named after that version under:
+  artifacts\release-bundles\X.Y
+- creates an updater-friendly setup folder at:
+  artifacts\release-bundles\X.Y\AudioBit-Setup
+- creates a zip named:
+  artifacts\release-bundles\X.Y.zip
+- puts only the updater-friendly Velopack release files in that setup folder
+- includes the modern setup installer, RELEASES feed, full package, portable package, json manifests, and release notes in one place
+- does not include the legacy custom installer flow
+
+Useful example:
+.\scripts\Build-ReleaseBundle.ps1 -Version 1.8
+
+
+CUSTOM BOOTSTRAP INSTALLER FOLDER
+
+Command:
+.\scripts\Publish-Release.ps1
+
+What it does:
+- reads the current version from version.json unless -Version is passed
+- builds the Velopack portable payload for that version in a temporary staging folder
+- publishes the custom AudioBit.Setup installer into:
+  artifacts\publish-ready\AudioBit-Setup
+- copies the updater-friendly Velopack portable zip into:
+  artifacts\publish-ready\AudioBit-Setup\payload\AudioBit-win-x64.zip
+- keeps the familiar custom installer folder layout
+- keeps auto-update support because the installed payload includes Update.exe, sq.version, and the Velopack launcher
+
+Useful example:
+.\scripts\Publish-Release.ps1 -Version 1.8
+
+
+TWO MAIN LOCAL RELEASE COMMANDS
+
+1. Only the custom bootstrap installer folder:
+.\scripts\Build-BootstrapInstaller.ps1
+
+Output:
+artifacts\bootstrap-installer\X.Y\AudioBit-Setup
+
+What it is for:
+- share this folder directly with another laptop or PC
+- install through the custom AudioBit.Setup UI
+- still updater-friendly because the payload is the Velopack portable layout
+
+
+2. New GitHub release folder with version bump:
+.\scripts\Build-GitHubReleaseFolder.ps1
+
+What it does:
+- reads version.json
+- bumps the version by 0.1
+- writes the new version back into version.json
+- creates:
+  artifacts\github-release\NEW_VERSION\AudioBit-Setup
+  artifacts\github-release\NEW_VERSION\GitHub-Upload
+- keeps the custom installer folder separate from the GitHub upload assets
+- keeps both outputs updater-friendly

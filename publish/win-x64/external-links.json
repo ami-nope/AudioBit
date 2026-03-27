@@ -1,0 +1,15 @@
+{
+  "relay": {
+    "http_base_url": "https://audiobit-relay-production.up.railway.app/",
+    "ws_url": "wss://audiobit-relay-production.up.railway.app/ws"
+  },
+  "remote_web": {
+    "connect_base_url": "https://audiobit-remote.vercel.app/connect"
+  },
+  "services": {
+    "geo_ip_lookup_url_template": "https://ipapi.co/{ip}/json/"
+  },
+  "project": {
+    "about_url": "https://github.com/ami-nope/AudioBit"
+  }
+}

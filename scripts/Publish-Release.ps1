@@ -1,21 +1,72 @@
 param(
+    [string]$Version,
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
     [string]$VersionFolder = "publish-ready",
     [switch]$NoRestore
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Assert-LastExitCode([string]$Message)
+{
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw $Message
+    }
+}
+
+function Test-VersionString([string]$Value)
+{
+    return $Value -match '^\d+\.\d+(?:\.\d+)?$'
+}
+
+function Convert-ToSemVer([string]$Value)
+{
+    $parts = $Value.Split('.')
+    if ($parts.Length -eq 2)
+    {
+        return "$Value.0"
+    }
+
+    return $Value
+}
+
+function Convert-ToAssemblyVersion([string]$SemVer)
+{
+    return "$SemVer.0"
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$versionFilePath = Join-Path $repoRoot "version.json"
+
+if ([string]::IsNullOrWhiteSpace($Version))
+{
+    if (-not (Test-Path $versionFilePath))
+    {
+        throw "version.json was not found at $versionFilePath"
+    }
+
+    $versionState = Get-Content -Raw $versionFilePath | ConvertFrom-Json
+    $Version = [string]$versionState.currentVersion
+}
+
+if ([string]::IsNullOrWhiteSpace($Version) -or -not (Test-VersionString $Version))
+{
+    throw "Version must be in X.Y or X.Y.Z format."
+}
+
+$displayVersion = $Version.Trim()
+$semVerVersion = Convert-ToSemVer $displayVersion
+$assemblyVersion = Convert-ToAssemblyVersion $semVerVersion
 $publishRoot = Join-Path $repoRoot ("artifacts\" + $VersionFolder)
-$portableDir = Join-Path $publishRoot "AudioBit-$Runtime-portable"
 $setupDir = Join-Path $publishRoot "AudioBit-Setup"
 $payloadDir = Join-Path $setupDir "payload"
-$payloadZip = Join-Path $payloadDir "AudioBit-$Runtime.zip"
+$payloadZip = Join-Path $payloadDir ("AudioBit-" + $Runtime + ".zip")
+$stagingRoot = Join-Path $publishRoot "_staging"
 $readmePath = Join-Path $publishRoot "README.txt"
-
-Write-Host "Preparing publish-ready folder at $publishRoot"
+$packScriptPath = Join-Path $PSScriptRoot "Pack-Velopack.ps1"
 
 $originalDotnetCliHome = $env:DOTNET_CLI_HOME
 $originalDotnetSkipFirstTimeExperience = $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE
@@ -27,83 +78,92 @@ if ($NoRestore)
     $publishArgs += "--no-restore"
 }
 
-Write-Warning "This script builds the legacy custom-installer package. Updater-compatible releases should be published with scripts\Release-Velopack.ps1."
-
-function Assert-LastExitCode([string]$Message)
-{
-    if ($LASTEXITCODE -ne 0)
-    {
-        throw $Message
-    }
-}
+Write-Host "Preparing bootstrap installer output at $publishRoot"
 
 try
 {
-    # The local .NET 10 SDK install resolves workload imports incorrectly unless this is disabled.
     $env:DOTNET_CLI_HOME = Join-Path $repoRoot ".dotnet"
     $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
     $env:MSBuildEnableWorkloadResolver = "false"
 
-    Remove-Item $portableDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $publishRoot -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path $publishRoot -Force | Out-Null
+
+    $packScriptArgs = @(
+        "-ExecutionPolicy", "Bypass",
+        "-File", $packScriptPath,
+        "-Version", $displayVersion,
+        "-Configuration", $Configuration,
+        "-Runtime", $Runtime,
+        "-OutputRoot", $stagingRoot
+    )
+
+    if ($NoRestore)
+    {
+        $packScriptArgs += "-NoRestore"
+    }
+
+    Write-Host "Building Velopack portable payload..."
+    & powershell @packScriptArgs
+    Assert-LastExitCode "Pack-Velopack.ps1 failed."
+
+    $portablePayload = Get-ChildItem $stagingRoot -File |
+        Where-Object { $_.Name -eq "AudioBit-stable-Portable.zip" } |
+        Select-Object -First 1
+
+    if ($null -eq $portablePayload)
+    {
+        throw "Velopack portable payload was not found in $stagingRoot"
+    }
+
     Remove-Item $setupDir -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Path $portableDir | Out-Null
-    New-Item -ItemType Directory -Path $setupDir | Out-Null
+    New-Item -ItemType Directory -Path $setupDir -Force | Out-Null
 
-    Write-Host "Publishing AudioBit app..."
-    dotnet publish (Join-Path $repoRoot "AudioBit.App\AudioBit.App.csproj") `
-        -c $Configuration `
-        -r $Runtime `
-        --self-contained true `
-        -p:PublishSingleFile=false `
-        @publishArgs `
-        -o $portableDir `
-        /m:1
-    Assert-LastExitCode "AudioBit app publish failed."
-
-    Write-Host "Publishing custom installer..."
+    Write-Host "Publishing AudioBit bootstrap installer..."
     dotnet publish (Join-Path $repoRoot "AudioBit.Installer\AudioBit.Installer.csproj") `
         -c $Configuration `
         -r $Runtime `
         --self-contained true `
         -p:PublishSingleFile=false `
+        -p:Version=$semVerVersion `
+        -p:AssemblyVersion=$assemblyVersion `
+        -p:FileVersion=$assemblyVersion `
+        -p:InformationalVersion=$semVerVersion `
         @publishArgs `
         -o $setupDir `
         /m:1
     Assert-LastExitCode "AudioBit installer publish failed."
 
-    New-Item -ItemType Directory -Path $payloadDir | Out-Null
-    Remove-Item $payloadZip -Force -ErrorAction SilentlyContinue
-
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $portableDir,
-        $payloadZip,
-        [System.IO.Compression.CompressionLevel]::Optimal,
-        $false)
+    New-Item -ItemType Directory -Path $payloadDir -Force | Out-Null
+    Copy-Item $portablePayload.FullName -Destination $payloadZip -Force
 
     @"
-AudioBit publish-ready output
+AudioBit bootstrap installer output
 Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+Display version: $displayVersion
+Package version: $semVerVersion
 Runtime: $Runtime
 
-This package path is the legacy custom-installer flow.
-Velopack GitHub Releases are the supported path for automatic updates.
-
-Installer:
+Installer folder:
   $setupDir
 
-Portable app publish:
-  $portableDir
+Payload:
+  $payloadZip
 
-Run AudioBit.Setup.exe from the installer folder to install.
-"@ | Set-Content -Path $readmePath
+This setup folder keeps the custom AudioBit.Setup bootstrap installer UI, but the
+bundled payload is the Velopack portable layout. Installs made from this setup can
+participate in the in-app updater because the installed files include Update.exe,
+sq.version, and the Velopack launcher.
+"@ | Set-Content -Path $readmePath -Encoding utf8
 
-    Write-Host "Publish-ready output created."
+    Write-Host "Bootstrap installer output created."
     Write-Host "Installer folder: $setupDir"
-    Write-Host "Portable folder: $portableDir"
+    Write-Host "Payload zip: $payloadZip"
 }
 finally
 {
+    Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
+
     if ($null -eq $originalDotnetCliHome)
     {
         Remove-Item Env:DOTNET_CLI_HOME -ErrorAction SilentlyContinue

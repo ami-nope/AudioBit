@@ -53,36 +53,151 @@ function Get-GithubRepoSlug()
     return "$($match.Groups['owner'].Value)/$($match.Groups['repo'].Value)"
 }
 
+function Test-GhAuthentication()
+{
+    if ($null -eq (Get-Command gh -ErrorAction SilentlyContinue))
+    {
+        return $false
+    }
+
+    try
+    {
+        $null = Invoke-ToolCapture "gh" @("auth", "status", "-h", "github.com") "GitHub CLI authentication check failed."
+        return $true
+    }
+    catch
+    {
+        return $false
+    }
+}
+
+function TryGetReleaseWorkflowRun([string]$RepositorySlug, [string]$TagName)
+{
+    try
+    {
+        $json = Invoke-ToolCapture "gh" @(
+            "run", "list",
+            "-R", $RepositorySlug,
+            "--workflow", "Release Velopack",
+            "--branch", $TagName,
+            "--event", "push",
+            "--limit", "1",
+            "--json", "databaseId,status,conclusion,url,displayTitle"
+        ) "Unable to query the Release Velopack workflow run."
+
+        if ([string]::IsNullOrWhiteSpace($json) -or $json -eq "[]")
+        {
+            return $null
+        }
+
+        $runs = $json | ConvertFrom-Json
+        return @($runs)[0]
+    }
+    catch
+    {
+        return $null
+    }
+}
+
+function TryGetPublishedReleaseWithGh([string]$RepositorySlug, [string]$TagName)
+{
+    try
+    {
+        $json = Invoke-ToolCapture "gh" @(
+            "release", "view", $TagName,
+            "-R", $RepositorySlug,
+            "--json", "url,isDraft,body,assets"
+        ) "Unable to query the GitHub release."
+
+        if ([string]::IsNullOrWhiteSpace($json))
+        {
+            return $null
+        }
+
+        return $json | ConvertFrom-Json
+    }
+    catch
+    {
+        return $null
+    }
+}
+
+function Test-ReleaseAssetsReady($Release)
+{
+    if ($null -eq $Release -or $Release.isDraft)
+    {
+        return $false
+    }
+
+    $assetNames = @($Release.assets | ForEach-Object { $_.name })
+    $hasSetupAsset = @($assetNames | Where-Object { $_ -match 'setup.*\.exe$|.*setup\.exe$' }).Count -gt 0
+    $hasFeedAsset = @($assetNames | Where-Object { $_ -match '^RELEASES' }).Count -gt 0
+    $hasPackageAsset = @($assetNames | Where-Object { $_ -match '\.nupkg$' }).Count -gt 0
+    $hasNotes = -not [string]::IsNullOrWhiteSpace([string]$Release.body)
+
+    return $hasSetupAsset -and $hasFeedAsset -and $hasPackageAsset -and $hasNotes
+}
+
+function Get-WorkflowFailureDetails([string]$RepositorySlug, $WorkflowRun)
+{
+    if ($null -eq $WorkflowRun)
+    {
+        return "The release workflow failed before a GitHub release was published."
+    }
+
+    try
+    {
+        return Invoke-ToolCapture "gh" @("run", "view", [string]$WorkflowRun.databaseId, "-R", $RepositorySlug) "Unable to view the failed workflow run."
+    }
+    catch
+    {
+        return "Workflow URL: $($WorkflowRun.url)"
+    }
+}
+
 function Wait-ForPublishedGitHubRelease([string]$RepositorySlug, [string]$TagName, [int]$TimeoutMinutes)
 {
     $releaseApiUrl = "https://api.github.com/repos/$RepositorySlug/releases/tags/$TagName"
     $deadline = [DateTime]::UtcNow.AddMinutes([Math]::Max(1, $TimeoutMinutes))
+    $ghAuthenticated = Test-GhAuthentication
 
     while ([DateTime]::UtcNow -lt $deadline)
     {
-        try
+        if ($ghAuthenticated)
         {
-            $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'AudioBit-ReleaseScript' } -Uri $releaseApiUrl
-            $assetNames = @($release.assets | ForEach-Object { $_.name })
-            $hasSetupAsset = $assetNames | Where-Object { $_ -match 'setup.*\.exe$|.*setup\.exe$' }
-            $hasFeedAsset = $assetNames | Where-Object { $_ -match '^RELEASES' }
-            $hasPackageAsset = $assetNames | Where-Object { $_ -match '\.nupkg$' }
-            $hasNotes = -not [string]::IsNullOrWhiteSpace([string]$release.body)
+            $workflowRun = TryGetReleaseWorkflowRun $RepositorySlug $TagName
+            if ($null -ne $workflowRun -and $workflowRun.status -eq "completed" -and $workflowRun.conclusion -ne "success")
+            {
+                $failureDetails = Get-WorkflowFailureDetails $RepositorySlug $workflowRun
+                throw "GitHub Actions release workflow failed for tag '$TagName'.`n`n$failureDetails"
+            }
 
-            if (-not $release.draft -and $hasSetupAsset -and $hasFeedAsset -and $hasPackageAsset -and $hasNotes)
+            $release = TryGetPublishedReleaseWithGh $RepositorySlug $TagName
+            if (Test-ReleaseAssetsReady $release)
             {
                 return $release
             }
         }
-        catch
+        else
         {
-            # Release may not exist yet while GitHub Actions is still running.
+            try
+            {
+                $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'AudioBit-ReleaseScript' } -Uri $releaseApiUrl
+                if (Test-ReleaseAssetsReady $release)
+                {
+                    return $release
+                }
+            }
+            catch
+            {
+                # Release may not exist yet while GitHub Actions is still running.
+            }
         }
 
         Start-Sleep -Seconds 15
     }
 
-    throw "Timed out waiting for the GitHub release '$TagName' to publish with setup, feed, package assets, and release notes."
+    throw "Timed out waiting for the GitHub release '$TagName' to publish with setup, feed, package assets, and release notes. If GitHub Actions failed, run 'gh run view -R $RepositorySlug' to inspect the latest release workflow."
 }
 
 function Sync-BranchWithOrigin([string]$BranchName)

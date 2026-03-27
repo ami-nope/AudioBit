@@ -127,7 +127,14 @@ public sealed class InstallerEngine
 
     private void CloseRunningAudioBitProcesses(IProgress<InstallerProgress> progress)
     {
-        var processes = Process.GetProcessesByName("AudioBit.App");
+        var processNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "AudioBit",
+            "AudioBit.App"
+        };
+        var processes = Process.GetProcesses()
+            .Where(process => processNames.Contains(process.ProcessName))
+            .ToArray();
         if (processes.Length == 0)
         {
             return;

@@ -14,6 +14,7 @@ internal sealed class AppUpdaterService : IDisposable
 {
     private const string UpdateRepositoryUrl = "https://github.com/ami-nope/AudioBit";
     private const string LegacyInstallFolderName = "AudioBit";
+    private const int DebugLogTailLineCount = 60;
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(10);
     private static readonly object LogFileGate = new();
     private static readonly Regex HtmlTagRegex = new("<[^>]+>", RegexOptions.Compiled);
@@ -204,6 +205,48 @@ internal sealed class AppUpdaterService : IDisposable
         });
     }
 
+    public string BuildDebugReport()
+    {
+        ThrowIfDisposed();
+
+        var status = CurrentStatus;
+        var baseDirectory = NormalizeDirectory(AppContext.BaseDirectory);
+        var parentDirectory = Directory.GetParent(baseDirectory)?.FullName;
+        var sqVersionPath = Path.Combine(baseDirectory, "sq.version");
+        var updateExePath = string.IsNullOrWhiteSpace(parentDirectory)
+            ? string.Empty
+            : Path.Combine(parentDirectory, "Update.exe");
+        var updaterLogPath = Path.Combine(AudioBitPaths.LogsDirectoryPath, "app-updater.log");
+        var report = new List<string>
+        {
+            "AudioBit updater debug report",
+            $"GeneratedAtUtc: {DateTime.UtcNow:O}",
+            $"RepositoryUrl: {UpdateRepositoryUrl}",
+            $"CurrentVersion: {status.CurrentVersion}",
+            $"DisplayVersion: {status.DisplayVersion}",
+            $"InstallKind: {status.InstallKind}",
+            $"State: {status.State}",
+            $"StatusTitle: {status.StatusTitle}",
+            $"StatusDetail: {status.StatusDetail}",
+            $"TargetVersion: {status.TargetVersion ?? "(none)"}",
+            $"BaseDirectory: {baseDirectory}",
+            $"SqVersionPath: {sqVersionPath}",
+            $"SqVersionExists: {File.Exists(sqVersionPath)}",
+            $"UpdateExePath: {(string.IsNullOrWhiteSpace(updateExePath) ? "(none)" : updateExePath)}",
+            $"UpdateExeExists: {!string.IsNullOrWhiteSpace(updateExePath) && File.Exists(updateExePath)}",
+            $"UpdaterLogPath: {updaterLogPath}",
+            string.Empty,
+            "Recent updater log tail:",
+        };
+
+        foreach (var line in ReadLogTail(updaterLogPath, DebugLogTailLineCount))
+        {
+            report.Add(line);
+        }
+
+        return string.Join(Environment.NewLine, report);
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -248,6 +291,30 @@ internal sealed class AppUpdaterService : IDisposable
     {
         return Path.GetFullPath(path)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static IReadOnlyList<string> ReadLogTail(string path, int maxLines)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return new[] { "(log file not found)" };
+            }
+
+            var allLines = File.ReadAllLines(path);
+            if (allLines.Length == 0)
+            {
+                return new[] { "(log file is empty)" };
+            }
+
+            var startIndex = Math.Max(0, allLines.Length - maxLines);
+            return allLines[startIndex..];
+        }
+        catch (Exception ex)
+        {
+            return new[] { $"(failed to read updater log: {ex.Message})" };
+        }
     }
 
     private static AppUpdateStatusSnapshot CreateInitialStatus(string currentVersion, string displayVersion, AppInstallKind installKind)

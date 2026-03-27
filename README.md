@@ -101,6 +101,8 @@ dotnet run --project AudioBit.App/AudioBit.App.csproj --configuration Debug
 ## Release Flow
 
 - `version.json` stores the current release version used by the one-command release flow.
+- Run `.\scripts\Build-BootstrapInstaller.ps1` to build only the custom `AudioBit.Setup` folder at `artifacts\bootstrap-installer\<version>\AudioBit-Setup`.
+- Run `.\scripts\Build-GitHubReleaseFolder.ps1` to bump `version.json` by `0.1`, then build `artifacts\github-release\<new-version>\AudioBit-Setup` and `artifacts\github-release\<new-version>\GitHub-Upload`.
 - Run `.\scripts\Release-Velopack.ps1` from the repo root to bump the stored version, commit all current changes, create the next numeric tag, and push it.
 - The script syncs with `origin/<current-branch>` before it creates the release commit, so the pushed tag stays attached to the actual branch tip that GitHub Releases will build.
 - After pushing, the script waits for the public GitHub Release to exist with Velopack feed assets, a setup installer, and release notes before it exits.
@@ -108,7 +110,8 @@ dotnet run --project AudioBit.App/AudioBit.App.csproj --configuration Debug
 - The release workflow generates markdown release notes, passes them into `vpk pack`, publishes them to GitHub Releases, and verifies the setup/bootstrapper asset plus the `RELEASES` feed asset that the updater depends on.
 - The pushed tag triggers the Velopack GitHub Actions release workflow, which builds and publishes the updater-compatible release assets.
 - Legacy `v1.2` or `v1.2.3` tags are still accepted, but the scripted flow uses plain numeric tags by default.
-- `scripts/Publish-Release.ps1` remains available for the legacy custom-installer packaging flow only.
+- Run `.\scripts\Build-ReleaseBundle.ps1` when you want only the raw Velopack upload assets in a local versioned folder.
+- Run `.\scripts\Publish-Release.ps1` when you want only the internal bootstrap-installer build step without the wrapper naming.
 
 ## Documentation
 

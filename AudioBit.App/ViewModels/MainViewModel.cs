@@ -159,6 +159,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private bool _hasPendingVersion;
     private bool _hasUpdateSummary;
     private bool _isUpdateRestartDialogVisible;
+    private bool _canCopyUpdateDebugInfo;
 
     public MainViewModel(
         AudioSessionService audioSessionService,
@@ -219,6 +220,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ToggleRemoteSessionOverlayCommand = new RelayCommand(ToggleRemoteSessionOverlay);
         RestartForUpdateCommand = new RelayCommand(RestartForUpdate, CanRestartForUpdate);
         RestartUpdateLaterCommand = new RelayCommand(() => _appUpdaterService.RestartLater(), () => IsUpdateRestartDialogVisible);
+        CopyUpdateDebugInfoCommand = new RelayCommand(CopyUpdateDebugInfo, () => CanCopyUpdateDebugInfo);
 
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -336,6 +338,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public IRelayCommand RestartUpdateLaterCommand { get; }
 
+    public IRelayCommand CopyUpdateDebugInfoCommand { get; }
+
     public string AppVersionText
     {
         get => _appVersionText;
@@ -397,6 +401,20 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             RestartForUpdateCommand.NotifyCanExecuteChanged();
             RestartUpdateLaterCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(IsAnyOverlayVisible));
+        }
+    }
+
+    public bool CanCopyUpdateDebugInfo
+    {
+        get => _canCopyUpdateDebugInfo;
+        private set
+        {
+            if (!SetProperty(ref _canCopyUpdateDebugInfo, value))
+            {
+                return;
+            }
+
+            CopyUpdateDebugInfoCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -1395,6 +1413,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _appUpdaterService.RestartNow();
     }
 
+    private void CopyUpdateDebugInfo()
+    {
+        CopyTextToClipboard(_appUpdaterService.BuildDebugReport(), "update debug info");
+    }
+
     private void OnAppUpdaterStatusChanged(AppUpdateStatusSnapshot status)
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -1423,8 +1446,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         HasPendingVersion = !string.IsNullOrWhiteSpace(status.TargetVersion);
         HasUpdateSummary = status.IsUpdateSummaryVisible && !string.IsNullOrWhiteSpace(status.ReleaseSummary);
         IsUpdateRestartDialogVisible = status.IsRestartDialogVisible;
+        CanCopyUpdateDebugInfo = status.State == AppUpdateState.Failed;
         RestartForUpdateCommand.NotifyCanExecuteChanged();
         RestartUpdateLaterCommand.NotifyCanExecuteChanged();
+        CopyUpdateDebugInfoCommand.NotifyCanExecuteChanged();
     }
 
     private async void RefreshTimerOnTick(object? sender, EventArgs e)

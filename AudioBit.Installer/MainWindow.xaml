@@ -1089,7 +1089,7 @@
 
                                             <TextBlock FontSize="11.5"
                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                       Text="Portable publish output stays next to the release package."
+                                                       Text="The bundled AudioBit.Setup payload contains the updater-ready app layout."
                                                        TextWrapping="Wrap" />
 
                                             <Grid Grid.Row="1"

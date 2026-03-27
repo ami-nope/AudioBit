@@ -5,7 +5,7 @@ namespace AudioBit.Installer;
 internal static class InstallerPaths
 {
     public const string AppDisplayName = "AudioBit";
-    public const string AppExecutableName = "AudioBit.App.exe";
+    public const string AppExecutableName = "AudioBit.exe";
     public const string PayloadFileName = "AudioBit-win-x64.zip";
     public const string SetupExecutableName = "AudioBit.Setup.exe";
 
