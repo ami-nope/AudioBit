@@ -10,7 +10,7 @@ What it is for:
 - share this folder directly with another laptop or PC
 - install through the custom AudioBit.Setup UI
 - still updater-friendly because the payload is the Velopack portable layout
-
+outputs to C:\Users\amiya\Desktop\AudioBit\artifacts\bootstrap-installer
 
 2. New GitHub release folder with version bump:
 .\scripts\Build-GitHubReleaseFolder.ps1
@@ -24,3 +24,4 @@ What it does:
   artifacts\github-release\NEW_VERSION\GitHub-Upload
 - keeps the custom installer folder separate from the GitHub upload assets
 - keeps both outputs updater-friendly
+outputs to 
