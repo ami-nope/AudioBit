@@ -23,6 +23,10 @@ public sealed class AudioSessionService : IDisposable
     private static readonly TimeSpan VolumeWriteGracePeriod = TimeSpan.FromMilliseconds(500);
     private const int MaxPendingRouteWriteRetries = 6;
     private const int MaxIconCacheEntries = 256;
+    private const float ResponsivePeakNoiseFloor = 0.0035f;
+    private const float ResponsivePeakExponent = 0.72f;
+    private const float ResponsivePeakGain = 1.12f;
+    private const float ResponsivePeakBlend = 0.18f;
 
     private readonly object _syncRoot = new();
     private readonly object _audioPolicyConfigSyncRoot = new();
@@ -785,14 +789,11 @@ public sealed class AudioSessionService : IDisposable
                     effectiveVolume = 1.0f;
                 }
 
-                var effectivePeak = isMuted || (isDefaultDevice && _isMasterMuted) || effectiveVolume <= AppAudioModel.SilenceThreshold
+                var audiblePeak = isMuted || (isDefaultDevice && _isMasterMuted) || effectiveVolume <= AppAudioModel.SilenceThreshold
                     ? 0.0f
                     : Math.Clamp(peak * effectiveVolume, 0.0f, 1.0f);
 
-                if (effectivePeak <= AppAudioModel.SilenceThreshold * 0.75f)
-                {
-                    effectivePeak = 0.0f;
-                }
+                var effectivePeak = ShapeResponsivePeak(audiblePeak);
 
                 if (!groups.TryGetValue(processId, out var group))
                 {
@@ -1602,6 +1603,24 @@ public sealed class AudioSessionService : IDisposable
     private static int SafeGetProcessId(AudioSessionControl session)
     {
         return SafeRead(() => (int)session.GetProcessID, 0);
+    }
+
+    private static float ShapeResponsivePeak(float peak)
+    {
+        if (peak <= ResponsivePeakNoiseFloor)
+        {
+            return 0.0f;
+        }
+
+        var normalizedPeak = Math.Clamp(
+            (peak - ResponsivePeakNoiseFloor) / (1.0f - ResponsivePeakNoiseFloor),
+            0.0f,
+            1.0f);
+        var liftedPeak = MathF.Pow(normalizedPeak, ResponsivePeakExponent);
+        return Math.Clamp(
+            (liftedPeak * ResponsivePeakGain) + (normalizedPeak * ResponsivePeakBlend),
+            0.0f,
+            1.0f);
     }
 
     private static T SafeRead<T>(Func<T> reader, T fallback)

@@ -23,6 +23,8 @@
   <ItemGroup>
     <None Remove="Assets\AudioBit.ico" />
     <Resource Include="Assets\AudioBit.ico" />
+    <None Remove="Assets\AudioBitHeaderLogo.png" />
+    <Resource Include="Assets\AudioBitHeaderLogo.png" />
   </ItemGroup>
 
   <ItemGroup>

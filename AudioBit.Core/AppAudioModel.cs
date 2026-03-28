@@ -29,7 +29,7 @@ public sealed class AppAudioModel
 
     public string AppKey => CreateIdentityKey(AppName);
 
-    public float AudiblePeak => IsMuted ? 0.0f : Math.Clamp(Peak * Volume, 0.0f, 1.0f);
+    public float AudiblePeak => IsMuted ? 0.0f : Math.Clamp(Peak, 0.0f, 1.0f);
 
     public bool IsActive => AudiblePeak > SilenceThreshold;
 

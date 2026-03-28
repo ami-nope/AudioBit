@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AudioBit.App.Models;
 
 public sealed class AppSettingsSnapshot
@@ -41,6 +43,11 @@ public sealed class AppSettingsSnapshot
     public string SelectedCalibrationOption { get; set; } = "Balanced";
 
     public string AppliedCalibrationLabel { get; set; } = "Adaptive / Balanced";
+
+    public bool SpotifyWidgetEnabled { get; set; } = true;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SpotifyClientId { get; set; }
 
     // User-selected custom background. Supports a solid color or a simple multi-stop gradient string.
     public string? CustomBackground { get; set; }

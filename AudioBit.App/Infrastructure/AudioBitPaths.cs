@@ -10,4 +10,6 @@ internal static class AudioBitPaths
     public static string SettingsFilePath => Path.Combine(DataDirectoryPath, "settings.json");
 
     public static string LogsDirectoryPath => Path.Combine(DataDirectoryPath, "Logs");
+
+    public static string SpotifyAuthStateFilePath => Path.Combine(DataDirectoryPath, "spotify-auth.bin");
 }

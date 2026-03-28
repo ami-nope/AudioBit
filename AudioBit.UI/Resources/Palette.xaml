@@ -9,6 +9,7 @@
     <SolidColorBrush x:Key="IconSecondaryBrush" Color="#9A9DAF" />
     <SolidColorBrush x:Key="AccentOrangeBrush" Color="#FF8D33" />
     <SolidColorBrush x:Key="AccentGreenBrush" Color="#49BF69" />
+    <SolidColorBrush x:Key="SpotifyAccentBrush" Color="#1DB954" />
     <SolidColorBrush x:Key="CardBorderBrush" Color="#434557" />
     <SolidColorBrush x:Key="IconTileBrush" Color="#373848" />
     <SolidColorBrush x:Key="IconTileBorderBrush" Color="#4A4C60" />
@@ -38,6 +39,59 @@
     <SolidColorBrush x:Key="ContextMenuHoverBrush" Color="#333648" />
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="#66697C" />
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#81859B" />
+    <SolidColorBrush x:Key="SpotifyWidgetBorderBrush" Color="#4E5368" />
+    <SolidColorBrush x:Key="SpotifyWidgetGlowBrush" Color="#661DB954" />
+    <SolidColorBrush x:Key="SpotifyWidgetProgressBrush" Color="#1DB954" />
+    <SolidColorBrush x:Key="SpotifyWidgetMutedTextBrush" Color="#A2A7B6" />
+    <SolidColorBrush x:Key="SpotifyWidgetIconBrush" Color="#FFFFFF" />
+
+    <DrawingImage x:Key="SpotifyLogoImage">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="#1ED760">
+                    <GeometryDrawing.Geometry>
+                        <EllipseGeometry Center="12,12" RadiusX="12" RadiusY="12" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing>
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="#121212"
+                             Thickness="1.85"
+                             StartLineCap="Round"
+                             EndLineCap="Round"
+                             LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                    <GeometryDrawing.Geometry>
+                        <PathGeometry Figures="M5.1,9.4 C9.4,7.9 14.8,8.2 18.9,10.6" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing>
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="#121212"
+                             Thickness="1.75"
+                             StartLineCap="Round"
+                             EndLineCap="Round"
+                             LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                    <GeometryDrawing.Geometry>
+                        <PathGeometry Figures="M6.1,12.4 C9.9,11.2 13.8,11.4 17.2,13.2" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing>
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="#121212"
+                             Thickness="1.65"
+                             StartLineCap="Round"
+                             EndLineCap="Round"
+                             LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                    <GeometryDrawing.Geometry>
+                        <PathGeometry Figures="M7.2,15.2 C10.2,14.3 13.1,14.5 15.6,15.8" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
 
     <LinearGradientBrush x:Key="ShellBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Offset="0" Color="#2B2B39" />
@@ -86,5 +140,15 @@
     <LinearGradientBrush x:Key="OverlayPrimaryHoverBrush" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Offset="0" Color="#FF9947" />
         <GradientStop Offset="1" Color="#F5862D" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="SpotifyWidgetGlassBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#B2252934" />
+        <GradientStop Offset="1" Color="#C11A1F29" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="SpotifyWidgetGlassHoverBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#C12A303B" />
+        <GradientStop Offset="1" Color="#CF1F2430" />
     </LinearGradientBrush>
 </ResourceDictionary>

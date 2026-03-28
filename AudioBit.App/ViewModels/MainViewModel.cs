@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -58,6 +59,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly AppSettingsStore _appSettingsStore;
     private readonly StartupRegistrationService _startupRegistrationService;
     private readonly AppUpdaterService _appUpdaterService;
+    private readonly SpotifyViewModel _spotifyViewModel;
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _masterVolumeAnimationTimer;
     private readonly DispatcherTimer _remoteConnectionTimer;
@@ -85,6 +87,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isLowPerformanceMode = GetDefaultLowPerformanceMode();
     private bool _isAlwaysOnTop;
     private bool _showAlwaysOnTopPin = true;
+    private bool _spotifyWidgetEnabled = true;
     private bool _hideToTrayOnMinimize = true;
     private bool _isEmptyStateVisible = true;
     private bool _isMonitoring;
@@ -167,7 +170,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         QrCodeService qrCodeService,
         AppSettingsStore appSettingsStore,
         StartupRegistrationService startupRegistrationService,
-        AppUpdaterService appUpdaterService)
+        AppUpdaterService appUpdaterService,
+        SpotifyViewModel spotifyViewModel)
     {
         _audioSessionService = audioSessionService;
         _remoteClientService = remoteClientService;
@@ -175,6 +179,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _appSettingsStore = appSettingsStore;
         _startupRegistrationService = startupRegistrationService;
         _appUpdaterService = appUpdaterService;
+        _spotifyViewModel = spotifyViewModel;
+        Spotify = spotifyViewModel;
         Sessions = new ObservableCollection<AppAudioViewModel>();
         PlaybackDevices = new ReadOnlyObservableCollection<AudioDeviceOptionModel>(_playbackDevices);
         CaptureDevices = new ReadOnlyObservableCollection<AudioDeviceOptionModel>(_captureDevices);
@@ -244,7 +250,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _persistDebounceTimer.Tick += PersistDebounceTimerOnTick;
         _remoteClientService.SessionInfoChanged += OnRemoteSessionInfoChanged;
         _appUpdaterService.StatusChanged += OnAppUpdaterStatusChanged;
-
         ApplySettingsSnapshot(_appSettingsStore.Load(), persistToDisk: false);
         ApplyRemoteSessionInfo(_remoteClientService.SessionInfo);
         ApplyAppUpdateStatus(_appUpdaterService.CurrentStatus);
@@ -253,6 +258,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<AppAudioViewModel> Sessions { get; }
+
+    public SpotifyViewModel Spotify { get; }
 
     public ReadOnlyObservableCollection<AudioDeviceOptionModel> PlaybackDevices { get; }
 
@@ -1056,6 +1063,20 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool SpotifyWidgetEnabled
+    {
+        get => _spotifyWidgetEnabled;
+        set
+        {
+            if (!SetProperty(ref _spotifyWidgetEnabled, value))
+            {
+                return;
+            }
+
+            PersistSettingsIfReady();
+        }
+    }
+
     public bool IsAdvancedSettingsOpen
     {
         get => _isAdvancedSettingsOpen;
@@ -1309,6 +1330,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public void Start()
     {
         StartMonitoring();
+        Spotify.Start();
         _ = _appUpdaterService.InitializeAsync(CancellationToken.None);
     }
 
@@ -1317,6 +1339,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _refreshTimer.Stop();
         IsMonitoring = false;
         UpdateStatusText();
+        Spotify.Stop();
     }
 
     public bool ConsumeStartMinimized()
@@ -1334,6 +1357,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public void OnHiddenToTray()
     {
+        Spotify.OnHiddenToTray();
+
         if (RunAsBackgroundService || !IsMonitoring)
         {
             _resumeMonitoringWhenRestored = false;
@@ -1346,6 +1371,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public void OnRestoredFromTray()
     {
+        Spotify.OnRestoredFromTray();
+
         if (!_resumeMonitoringWhenRestored)
         {
             return;
@@ -1401,6 +1428,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _persistDebounceTimer.Tick -= PersistDebounceTimerOnTick;
         _remoteClientService.SessionInfoChanged -= OnRemoteSessionInfoChanged;
         _appUpdaterService.StatusChanged -= OnAppUpdaterStatusChanged;
+        Spotify.Dispose();
     }
 
     private bool CanRestartForUpdate()
@@ -1515,6 +1543,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             ApplySnapshot(snapshot);
+            UpdateSpotifyLivePeak(snapshot);
             _remoteClientService.UpdateAudioSnapshot(
                 snapshot,
                 _audioSessionService.MasterVolume,
@@ -1531,6 +1560,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             StatusText = "Audio session monitoring is temporarily unavailable.";
             HasPlaybackDevice = false;
             CurrentDeviceName = "No playback device";
+            Spotify.UpdateLivePeak(0.0);
 
             _isApplyingDeviceSnapshot = true;
             try
@@ -1737,6 +1767,39 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AreAllMuted));
         OnPropertyChanged(nameof(SelectedAgentFootnote));
         OnPropertyChanged(nameof(CalibrationSummary));
+    }
+
+    private void UpdateSpotifyLivePeak(IReadOnlyList<AppAudioModel> models)
+    {
+        double peak = 0.0;
+        for (var index = 0; index < models.Count; index++)
+        {
+            var model = models[index];
+            if (!IsSpotifySession(model))
+            {
+                continue;
+            }
+
+            peak = Math.Max(peak, model.AudiblePeak);
+        }
+
+        Spotify.UpdateLivePeak(peak);
+    }
+
+    private static bool IsSpotifySession(AppAudioModel model)
+    {
+        if (model is null)
+        {
+            return false;
+        }
+
+        if (string.Equals(model.AppKey, "Spotify", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(model.AppName)
+            && model.AppName.Contains("spotify", StringComparison.OrdinalIgnoreCase);
     }
 
     private void StartMonitoring()
@@ -2640,6 +2703,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             AutoMuteMicOnSoundboard = snapshot.AutoMuteMicOnSoundboard;
             DebugMode = snapshot.DebugMode;
             IsDarkTheme = snapshot.IsDarkTheme;
+            SpotifyWidgetEnabled = snapshot.SpotifyWidgetEnabled;
             ApplyPinnedAppKeys(snapshot.PinnedAppKeys);
             ApplySelectedAgent(snapshot.SelectedAgentKey);
             SelectedCalibrationMode = string.IsNullOrWhiteSpace(snapshot.SelectedCalibrationMode) ? "Adaptive" : snapshot.SelectedCalibrationMode;
@@ -2686,6 +2750,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             AutoMuteMicOnSoundboard = AutoMuteMicOnSoundboard,
             DebugMode = DebugMode,
             IsDarkTheme = IsDarkTheme,
+            SpotifyWidgetEnabled = SpotifyWidgetEnabled,
+            SpotifyClientId = string.IsNullOrWhiteSpace(Spotify.ClientId) ? null : Spotify.ClientId,
             SelectedAgentKey = SelectedAgentKey,
             SelectedCalibrationMode = SelectedCalibrationMode,
             SelectedCalibrationOption = SelectedCalibrationOption,

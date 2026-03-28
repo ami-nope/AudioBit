@@ -102,7 +102,7 @@ dotnet run --project AudioBit.App/AudioBit.App.csproj --configuration Debug
 
 - `version.json` stores the current release version used by the one-command release flow.
 - Run `.\scripts\Build-BootstrapInstaller.ps1` to build only the custom `AudioBit.Setup` folder at `artifacts\bootstrap-installer\<version>\AudioBit-Setup`.
-- Run `.\scripts\Build-GitHubReleaseFolder.ps1` to bump `version.json` by `0.1`, then build `artifacts\github-release\<new-version>\AudioBit-Setup` and `artifacts\github-release\<new-version>\GitHub-Upload`.
+- Run `.\scripts\Build-GitHubReleaseFolder.ps1` to bump `version.json` by `0.1`, then build `artifacts\github-release\<new-version>\GitHub-Upload` with the custom installer nested at `GitHub-Upload\AudioBit-Setup`, zipped as `GitHub-Upload\AudioBit-Setup.zip`, and a brief text note at `GitHub-Upload\release-notes-brief.txt`.
 - Run `.\scripts\Release-Velopack.ps1` from the repo root to bump the stored version, commit all current changes, create the next numeric tag, and push it.
 - The script syncs with `origin/<current-branch>` before it creates the release commit, so the pushed tag stays attached to the actual branch tip that GitHub Releases will build.
 - After pushing, the script waits for the public GitHub Release to exist with Velopack feed assets, a setup installer, and release notes before it exits.

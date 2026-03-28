@@ -289,7 +289,7 @@ public sealed class AppAudioViewModel : ObservableObject
         }
     }
 
-    public double DisplayPeak => IsMuted ? 0.0 : Math.Clamp(Peak * Volume, 0.0, 1.0);
+    public double DisplayPeak => IsMuted ? 0.0 : Math.Clamp(Peak, 0.0, 1.0);
 
     public bool IsActive => DisplayPeak > AppAudioModel.SilenceThreshold;
 

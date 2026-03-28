@@ -36,17 +36,6 @@ When a chosen app produces audio, automatically mute others.
 
 
 
-add a spotify extebsion that shows the current track and allows basic playback
- controls directly from the AudioBit interface. This would enhance the user experience 
- by integrating popular music streaming services seamlessly into the audio management workflow.
- like make the ui by a side small liek a bookmark to the side of the app with rounded corner and with a spotify icon and a hover effect 
- that expands the bookmark to show the current track, artist, and playback controls (play/pause, next, previous). 
- This would allow users to control their music without switching to the Spotify app, making it more convenient while managing their audio settings in AudioBit.
- also make this available in remote control mode so users can control Spotify from their phone when 
- paired with AudioBit. through the relay or a different spotify API integration for mobile control.
-
-
-
 
  
 
@@ -257,7 +246,11 @@ What it does:
 - bumps the version by 0.1
 - writes the new version back into version.json
 - creates:
-  artifacts\github-release\NEW_VERSION\AudioBit-Setup
   artifacts\github-release\NEW_VERSION\GitHub-Upload
-- keeps the custom installer folder separate from the GitHub upload assets
+  artifacts\github-release\NEW_VERSION\GitHub-Upload\AudioBit-Setup
+  artifacts\github-release\NEW_VERSION\GitHub-Upload\AudioBit-Setup.zip
+  artifacts\github-release\NEW_VERSION\GitHub-Upload\release-notes-brief.txt
+- keeps the custom installer folder inside the GitHub upload folder
+- also zips that custom installer folder automatically through the command
+- also creates a brief text release note with at least 12 lines
 - keeps both outputs updater-friendly

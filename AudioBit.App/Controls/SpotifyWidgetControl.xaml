@@ -1,0 +1,463 @@
+<UserControl x:Class="AudioBit.App.Controls.SpotifyWidgetControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+        <Style x:Key="SpotifyControlButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="#1CFFFFFF" />
+            <Setter Property="BorderBrush" Value="#00000000" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="RootBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="16">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#261DB954" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="RootBorder" Property="Opacity" Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="RootBorder" Property="Opacity" Value="0.38" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SpotifyPrimaryControlButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid x:Name="Root"
+                              RenderTransformOrigin="0.5,0.5"
+                              Opacity="0.92"
+                              Background="{TemplateBinding Background}">
+                            <Grid.RenderTransform>
+                                <ScaleTransform ScaleX="1"
+                                                ScaleY="1" />
+                            </Grid.RenderTransform>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="1" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Width="48"
+          Height="136">
+        <Grid x:Name="TabHitArea"
+              Width="48"
+              Height="136"
+              Background="Transparent"
+              PreviewMouseLeftButtonUp="TabHitArea_OnPreviewMouseLeftButtonUp">
+            <Border x:Name="TabGlow"
+                    Margin="-2"
+                    Background="{DynamicResource SpotifyWidgetGlowBrush}"
+                    BorderThickness="0"
+                    CornerRadius="20"
+                    Opacity="0" />
+
+            <Border x:Name="TabSurface"
+                    Width="48"
+                    Height="136"
+                    Background="{DynamicResource SpotifyWidgetGlassBrush}"
+                    BorderThickness="0"
+                    CornerRadius="18"
+                    ClipToBounds="True">
+                <Grid>
+                    <Border Height="30"
+                            VerticalAlignment="Top"
+                            CornerRadius="18,18,10,10">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0"
+                                                 EndPoint="0,1">
+                                <GradientStop Offset="0"
+                                              Color="#22FFFFFF" />
+                                <GradientStop Offset="1"
+                                              Color="#00FFFFFF" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+
+                    <Grid Margin="8,10,8,12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,0">
+                            <Image Width="32"
+                                   Height="32"
+                                   Source="{StaticResource SpotifyLogoImage}"
+                                   Stretch="Uniform">
+                                <Image.Style>
+                                    <Style TargetType="{x:Type Image}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Image.Style>
+                            </Image>
+                            <Border Width="32"
+                                    Height="32"
+                                    CornerRadius="6"
+                                    ClipToBounds="True">
+                                <Border.Style>
+                                    <Style TargetType="{x:Type Border}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Image Source="{Binding AlbumArt}"
+                                       Stretch="UniformToFill" />
+                            </Border>
+                        </Grid>
+
+                        <Grid Grid.Row="1"
+                              Margin="0,10,0,10"
+                              Height="34"
+                              VerticalAlignment="Center"
+                              IsHitTestVisible="False">
+                            <UniformGrid Columns="9"
+                                         Rows="1"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Bottom">
+                                <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#12E37D" /><GradientStop Offset="1" Color="#58F4A5" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar1Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                                <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#20E7AA" /><GradientStop Offset="1" Color="#61FFF3" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar2Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                                <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#2FD0FF" /><GradientStop Offset="1" Color="#7E9CFF" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar3Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                                <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#6F7DFF" /><GradientStop Offset="1" Color="#C06AFF" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar4Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                                <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#B14BFF" /><GradientStop Offset="1" Color="#FF60D8" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar5Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                                <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#FF5EBB" /><GradientStop Offset="1" Color="#FF7B8A" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar6Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                                <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#FF7F63" /><GradientStop Offset="1" Color="#FFB25B" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar7Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                                <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#F7B948" /><GradientStop Offset="1" Color="#FFF171" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar8Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                                <Border Height="24" Margin="0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
+                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#C8F24A" /><GradientStop Offset="1" Color="#72FF9C" /></LinearGradientBrush></Border.Background>
+                                    <Border.RenderTransform><ScaleTransform x:Name="Bar9Scale" ScaleY="0.12" /></Border.RenderTransform>
+                                </Border>
+                            </UniformGrid>
+                        </Grid>
+
+                        <Button Grid.Row="2"
+                                Command="{Binding PlayPauseCommand}"
+                                Style="{StaticResource SpotifyPrimaryControlButtonStyle}">
+                            <Grid Width="18"
+                                  Height="18">
+                                <Path Fill="{DynamicResource SpotifyAccentBrush}"
+                                      Data="M4,2.1 L15.2,9 L4,15.9 Z">
+                                    <Path.Style>
+                                        <Style TargetType="{x:Type Path}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Path.Style>
+                                </Path>
+                                <Grid Width="11" Height="13">
+                                    <Grid.Style>
+                                        <Style TargetType="{x:Type Grid}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
+                                    <Rectangle Width="3.6" Height="13" HorizontalAlignment="Left" RadiusX="1" RadiusY="1" Fill="{DynamicResource SpotifyAccentBrush}" />
+                                    <Rectangle Width="3.6" Height="13" HorizontalAlignment="Right" RadiusX="1" RadiusY="1" Fill="{DynamicResource SpotifyAccentBrush}" />
+                                </Grid>
+                            </Grid>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Popup x:Name="WidgetPopup"
+               AllowsTransparency="True"
+               DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+               HorizontalOffset="1"
+               IsOpen="False"
+               Placement="Right"
+               PlacementTarget="{Binding ElementName=TabHitArea}"
+               PopupAnimation="None"
+               StaysOpen="False"
+               Closed="WidgetPopup_OnClosed">
+            <Border Width="280"
+                    Height="136"
+                    ClipToBounds="True"
+                    Background="Transparent">
+                <Border x:Name="ExpandedPanel"
+                        Width="280"
+                        Height="136"
+                        Background="{DynamicResource SpotifyWidgetGlassBrush}"
+                        BorderThickness="0"
+                        CornerRadius="20"
+                        HorizontalAlignment="Left"
+                        PreviewMouseLeftButtonDown="ExpandedPanel_OnPreviewMouseLeftButtonDown">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="ExpandedPanelShift"
+                                            X="-280" />
+                    </Border.RenderTransform>
+
+                    <Grid Width="280" Height="136">
+                        <Border Height="34"
+                                VerticalAlignment="Top"
+                                CornerRadius="20,20,0,0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0"
+                                                     EndPoint="0,1">
+                                    <GradientStop Offset="0"
+                                                  Color="#1EFFFFFF" />
+                                    <GradientStop Offset="1"
+                                                  Color="#00FFFFFF" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <Grid Margin="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="112" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Width="112"
+                                  Height="112"
+                                  Margin="12,0,0,0">
+                                <Grid.Effect>
+                                    <DropShadowEffect BlurRadius="16" ShadowDepth="6" Direction="270" Opacity="0.45" Color="Black" />
+                                </Grid.Effect>
+                                <Border Background="{DynamicResource OverlayOptionBrush}"
+                                        CornerRadius="12"
+                                        ClipToBounds="True">
+                                    <Grid>
+                                        <Border Background="{DynamicResource OverlayOptionBrush}" />
+                                        <Image Source="{Binding AlbumArt}"
+                                               Stretch="UniformToFill" />
+                                        <Image Width="32"
+                                               Height="32"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Source="{StaticResource SpotifyLogoImage}"
+                                               Stretch="Uniform">
+                                            <Image.Style>
+                                                <Style TargetType="{x:Type Image}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding AlbumArt}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Image.Style>
+                                        </Image>
+                                    </Grid>
+                                </Border>
+                                <!-- Glossy rim overlay -->
+                                <Border CornerRadius="12" BorderBrush="#22FFFFFF" BorderThickness="1" />
+                            </Grid>
+
+                            <Grid Grid.Column="1" Margin="14,2,2,2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="1" VerticalAlignment="Center">
+                                    <TextBlock FontSize="14"
+                                               FontWeight="Bold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Text="{Binding TrackName}"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding TrackName}" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               FontSize="11.5"
+                                               Foreground="{DynamicResource SpotifyWidgetMutedTextBrush}"
+                                               Text="{Binding ArtistName}"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding ArtistName}" />
+                                </StackPanel>
+
+                                <ProgressBar Grid.Row="2"
+                                             Height="4"
+                                             Margin="0,14,0,14"
+                                             Background="#24000000"
+                                             BorderThickness="0"
+                                             Foreground="{DynamicResource SpotifyWidgetProgressBrush}"
+                                             Maximum="100"
+                                             Value="{Binding ProgressPercent, Mode=OneWay}"
+                                             Visibility="{Binding ShowProgressBar, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ProgressBar.Template>
+                                        <ControlTemplate TargetType="{x:Type ProgressBar}">
+                                            <Grid>
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="2" />
+                                                <Border Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="2" />
+                                                <Border Name="PART_Track" />
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </ProgressBar.Template>
+                                </ProgressBar>
+
+                                <Grid Grid.Row="3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button Grid.Column="1"
+                                            Command="{Binding PreviousCommand}"
+                                            Style="{StaticResource SpotifyControlButtonStyle}">
+                                        <Viewbox Width="14"
+                                                 Height="14">
+                                            <Canvas Width="16"
+                                                    Height="16">
+                                                <Rectangle Width="2" Height="10" Canvas.Left="1.5" Canvas.Top="3" Fill="{DynamicResource SpotifyWidgetIconBrush}" RadiusX="1" RadiusY="1" />
+                                                <Path Data="M9.2,4.1 L4.2,8 L9.2,11.9 Z" Fill="{DynamicResource SpotifyWidgetIconBrush}" />
+                                                <Path Data="M14.1,4.1 L9.1,8 L14.1,11.9 Z" Fill="{DynamicResource SpotifyWidgetIconBrush}" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+
+                                    <Button Grid.Column="2"
+                                            Margin="14,0"
+                                            Command="{Binding PlayPauseCommand}"
+                                            Style="{StaticResource SpotifyPrimaryControlButtonStyle}">
+                                        <Grid Width="30" Height="30">
+                                            <Ellipse Fill="{DynamicResource SpotifyAccentBrush}" />
+                                            
+                                            <Path Fill="#121212"
+                                                  Data="M4,2.1 L15.2,9 L4,15.9 Z" 
+                                                  HorizontalAlignment="Center" 
+                                                  VerticalAlignment="Center" 
+                                                  Margin="2,0,0,0">
+                                                <Path.Style>
+                                                    <Style TargetType="{x:Type Path}">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Path.Style>
+                                            </Path>
+                                            
+                                            <Grid Width="12" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Grid.Style>
+                                                    <Style TargetType="{x:Type Grid}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Grid.Style>
+                                                <Rectangle Width="4" Height="14" HorizontalAlignment="Left" Fill="#121212" RadiusX="1" RadiusY="1" />
+                                                <Rectangle Width="4" Height="14" HorizontalAlignment="Right" Fill="#121212" RadiusX="1" RadiusY="1" />
+                                            </Grid>
+                                        </Grid>
+                                    </Button>
+
+                                    <Button Grid.Column="3"
+                                            Command="{Binding NextCommand}"
+                                            Style="{StaticResource SpotifyControlButtonStyle}">
+                                        <Viewbox Width="14"
+                                                 Height="14">
+                                            <Canvas Width="16"
+                                                    Height="16">
+                                                <Path Data="M1.9,4.1 L6.9,8 L1.9,11.9 Z" Fill="{DynamicResource SpotifyWidgetIconBrush}" />
+                                                <Path Data="M6.8,4.1 L11.8,8 L6.8,11.9 Z" Fill="{DynamicResource SpotifyWidgetIconBrush}" />
+                                                <Rectangle Width="2" Height="10" Canvas.Left="12.5" Canvas.Top="3" Fill="{DynamicResource SpotifyWidgetIconBrush}" RadiusX="1" RadiusY="1" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Border>
+        </Popup>
+    </Grid>
+</UserControl>

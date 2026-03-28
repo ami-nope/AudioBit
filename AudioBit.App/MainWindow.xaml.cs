@@ -52,6 +52,7 @@ public partial class MainWindow : Window
         Loaded += MainWindowOnLoaded;
         SizeChanged += MainWindowOnSizeChanged;
         StateChanged += MainWindowOnStateChanged;
+        Deactivated += MainWindowOnDeactivated;
         Closing += MainWindowOnClosing;
         Closed += MainWindowOnClosed;
         PreviewKeyDown += MainWindowOnPreviewKeyDown;
@@ -69,12 +70,17 @@ public partial class MainWindow : Window
         int nWidthEllipse,
         int nHeightEllipse);
 
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern int CombineRgn(IntPtr hrgnDest, IntPtr hrgnSrc1, IntPtr hrgnSrc2, int fnCombineMode);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
 
     [DllImport("gdi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DeleteObject(IntPtr hObject);
+
+    private const int RgnOr = 2;
 
     private void MainWindowOnSourceInitialized(object? sender, EventArgs e)
     {
@@ -127,6 +133,11 @@ public partial class MainWindow : Window
         ApplyRoundedWindowRegion();
     }
 
+    private void MainWindowOnDeactivated(object? sender, EventArgs e)
+    {
+        SpotifyWidget?.Collapse();
+    }
+
     private void MainWindowOnClosing(object? sender, CancelEventArgs e)
     {
         if (!_exitRequested && _viewModel.ShouldHideOnClose)
@@ -153,6 +164,7 @@ public partial class MainWindow : Window
         _globalHotKeyService.Dispose();
         PreviewKeyDown -= MainWindowOnPreviewKeyDown;
         PreviewMouseDown -= MainWindowOnPreviewMouseDown;
+        Deactivated -= MainWindowOnDeactivated;
         RemoveHandler(UIElement.PreviewMouseWheelEvent, _closeComboBoxesOnMouseWheelHandler);
         RemoveHandler(ScrollViewer.ScrollChangedEvent, _closeComboBoxesOnScrollChangedHandler);
     }
@@ -217,6 +229,7 @@ public partial class MainWindow : Window
 
     private void HideToTray()
     {
+        SpotifyWidget?.Collapse();
         ShowInTaskbar = false;
         Hide();
         _viewModel.OnHiddenToTray();
@@ -253,11 +266,25 @@ public partial class MainWindow : Window
         if (_viewModel.TryHandleMicMuteHotKeyCapture(e))
         {
             e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape && SpotifyWidget is not null && SpotifyWidget.IsExpanded)
+        {
+            SpotifyWidget.Collapse();
+            e.Handled = true;
         }
     }
 
     private void MainWindowOnPreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (SpotifyWidget is not null
+            && SpotifyWidget.IsExpanded
+            && (e.OriginalSource is not DependencyObject spotifySource || !SpotifyWidget.ContainsElement(spotifySource)))
+        {
+            SpotifyWidget.Collapse();
+        }
+
         var isDeviceInfoVisible = _viewModel.IsRemoteDeviceInfoPanelVisible;
         if (!isDeviceInfoVisible)
         {
@@ -600,6 +627,7 @@ public partial class MainWindow : Window
             SetBrush("IconSecondaryBrush", Solid("#9A9DAF"));
             SetBrush("AccentOrangeBrush", Solid("#FF8D33"));
             SetBrush("AccentGreenBrush", Solid("#49BF69"));
+            SetBrush("SpotifyAccentBrush", Solid("#1DB954"));
             SetBrush("CardBackgroundBrush", Gradient("#2A2A38", "#242532"));
             SetBrush("CardBorderBrush", Solid("#434557"));
             SetBrush("IconTileBrush", Solid("#373848"));
@@ -635,6 +663,13 @@ public partial class MainWindow : Window
             SetBrush("ContextMenuHoverBrush", Solid("#333648"));
             SetBrush("ScrollThumbBrush", Solid("#66697C"));
             SetBrush("ScrollThumbHoverBrush", Solid("#81859B"));
+            SetBrush("SpotifyWidgetGlassBrush", Gradient("#B2252934", "#C11A1F29"));
+            SetBrush("SpotifyWidgetGlassHoverBrush", Gradient("#C12A303B", "#CF1F2430"));
+            SetBrush("SpotifyWidgetBorderBrush", Solid("#4E5368"));
+            SetBrush("SpotifyWidgetGlowBrush", Solid("#661DB954"));
+            SetBrush("SpotifyWidgetProgressBrush", Solid("#1DB954"));
+            SetBrush("SpotifyWidgetMutedTextBrush", Solid("#A2A7B6"));
+            SetBrush("SpotifyWidgetIconBrush", Solid("#FFFFFF"));
             return;
         }
 
@@ -653,6 +688,7 @@ public partial class MainWindow : Window
         SetBrush("IconSecondaryBrush", Solid("#8E91A2"));
         SetBrush("AccentOrangeBrush", Solid("#F58A2C"));
         SetBrush("AccentGreenBrush", Solid("#46B86A"));
+        SetBrush("SpotifyAccentBrush", Solid("#1DB954"));
         SetBrush("CardBackgroundBrush", Gradient("#FFFFFF", "#F8F6FA"));
         SetBrush("CardBorderBrush", Solid("#DDD9E1"));
         SetBrush("IconTileBrush", Solid("#F4F1F6"));
@@ -688,6 +724,13 @@ public partial class MainWindow : Window
         SetBrush("ContextMenuHoverBrush", Solid("#F1EEF4"));
         SetBrush("ScrollThumbBrush", Solid("#C9C3CE"));
         SetBrush("ScrollThumbHoverBrush", Solid("#B3ADB8"));
+        SetBrush("SpotifyWidgetGlassBrush", Gradient("#E8FFFFFF", "#D7F3F0F6"));
+        SetBrush("SpotifyWidgetGlassHoverBrush", Gradient("#F2FFFFFF", "#E5F6F3F8"));
+        SetBrush("SpotifyWidgetBorderBrush", Solid("#D7DDE6"));
+        SetBrush("SpotifyWidgetGlowBrush", Solid("#551DB954"));
+        SetBrush("SpotifyWidgetProgressBrush", Solid("#1DB954"));
+        SetBrush("SpotifyWidgetMutedTextBrush", Solid("#6B7080"));
+        SetBrush("SpotifyWidgetIconBrush", Solid("#FFFFFF"));
     }
 
     private void MasterCardHost_OnMouseEnter(object sender, MouseEventArgs e)
@@ -871,7 +914,24 @@ public partial class MainWindow : Window
         var cornerDiameterX = Math.Max(2, (int)Math.Ceiling(WindowCornerRadius * 2 * dpi.DpiScaleX));
         var cornerDiameterY = Math.Max(2, (int)Math.Ceiling(WindowCornerRadius * 2 * dpi.DpiScaleY));
 
-        var regionHandle = CreateRoundRectRgn(0, 0, width + 1, height + 1, cornerDiameterX, cornerDiameterY);
+        var shellRegion = CreateShellRegion(dpi, width, height, cornerDiameterX, cornerDiameterY);
+        var widgetRegion = CreateSpotifyWidgetRegion(dpi);
+        var regionHandle = shellRegion;
+
+        if (regionHandle != IntPtr.Zero && widgetRegion != IntPtr.Zero)
+        {
+            if (CombineRgn(regionHandle, shellRegion, widgetRegion, RgnOr) == 0)
+            {
+                DeleteObject(widgetRegion);
+                widgetRegion = IntPtr.Zero;
+            }
+        }
+
+        if (widgetRegion != IntPtr.Zero)
+        {
+            DeleteObject(widgetRegion);
+        }
+
         if (regionHandle == IntPtr.Zero)
         {
             return;
@@ -881,6 +941,42 @@ public partial class MainWindow : Window
         {
             DeleteObject(regionHandle);
         }
+    }
+
+    private IntPtr CreateShellRegion(DpiScale dpi, int fallbackWidth, int fallbackHeight, int cornerDiameterX, int cornerDiameterY)
+    {
+        if (ShellBorder is null || ShellBorder.ActualWidth <= 0 || ShellBorder.ActualHeight <= 0)
+        {
+            return CreateRoundRectRgn(0, 0, fallbackWidth + 1, fallbackHeight + 1, cornerDiameterX, cornerDiameterY);
+        }
+
+        var shellOrigin = ShellBorder.TranslatePoint(new Point(0, 0), this);
+        var left = (int)Math.Floor(shellOrigin.X * dpi.DpiScaleX);
+        var top = (int)Math.Floor(shellOrigin.Y * dpi.DpiScaleY);
+        var right = (int)Math.Ceiling((shellOrigin.X + ShellBorder.ActualWidth) * dpi.DpiScaleX);
+        var bottom = (int)Math.Ceiling((shellOrigin.Y + ShellBorder.ActualHeight) * dpi.DpiScaleY);
+
+        return CreateRoundRectRgn(left, top, right + 1, bottom + 1, cornerDiameterX, cornerDiameterY);
+    }
+
+    private IntPtr CreateSpotifyWidgetRegion(DpiScale dpi)
+    {
+        if (SpotifyWidget is null || SpotifyWidget.ActualWidth <= 0 || SpotifyWidget.ActualHeight <= 0)
+        {
+            return IntPtr.Zero;
+        }
+
+        var widgetOrigin = SpotifyWidget.TranslatePoint(new Point(0, 0), this);
+        const double widgetCornerRadius = 18;
+
+        var left = (int)Math.Floor(widgetOrigin.X * dpi.DpiScaleX);
+        var top = (int)Math.Floor(widgetOrigin.Y * dpi.DpiScaleY);
+        var right = (int)Math.Ceiling((widgetOrigin.X + SpotifyWidget.ActualWidth) * dpi.DpiScaleX);
+        var bottom = (int)Math.Ceiling((widgetOrigin.Y + SpotifyWidget.ActualHeight) * dpi.DpiScaleY);
+        var cornerDiameterX = Math.Max(2, (int)Math.Ceiling(widgetCornerRadius * 2 * dpi.DpiScaleX));
+        var cornerDiameterY = Math.Max(2, (int)Math.Ceiling(widgetCornerRadius * 2 * dpi.DpiScaleY));
+
+        return CreateRoundRectRgn(left, top, right + 1, bottom + 1, cornerDiameterX, cornerDiameterY);
     }
 
     private void ApplyRoundedVisualClips()

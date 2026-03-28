@@ -4,13 +4,14 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:abui="clr-namespace:AudioBit.UI;assembly=AudioBit.UI"
+        xmlns:controls="clr-namespace:AudioBit.App.Controls"
         xmlns:infra="clr-namespace:AudioBit.UI.Infrastructure;assembly=AudioBit.UI"
         Title="AudioBit"
-        Width="356"
+        Width="405"
         Height="690"
-        MinWidth="356"
+        MinWidth="405"
         MinHeight="690"
-        MaxWidth="356"
+        MaxWidth="405"
         MaxHeight="690"
         Background="{Binding CustomBackground, Converter={StaticResource CustomBackgroundConverter}, ConverterParameter=WindowBackdropBrush}"
         FontFamily="Segoe UI"
@@ -105,11 +106,12 @@
         <Style x:Key="PinOrbToggleStyle" TargetType="{x:Type ToggleButton}">
             <Setter Property="Width" Value="30" />
             <Setter Property="Height" Value="30" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="#3A3A3D" />
+            <Setter Property="BorderBrush" Value="#505055" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="#F7F7F7" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -117,14 +119,13 @@
                         <Grid x:Name="RootGrid"
                               RenderTransformOrigin="0.5,0.5">
                             <Ellipse x:Name="Halo"
-                                     Width="22"
-                                     Height="22"
+                                     Width="24"
+                                     Height="24"
                                      HorizontalAlignment="Center"
                                      VerticalAlignment="Center"
-                                     Fill="{DynamicResource UtilityButtonBrush}"
-                                     Stroke="{DynamicResource UtilityButtonBorderBrush}"
-                                     StrokeThickness="1"
-                                     Opacity="0" />
+                                     Fill="{TemplateBinding Background}"
+                                     Stroke="{TemplateBinding BorderBrush}"
+                                     StrokeThickness="{TemplateBinding BorderThickness}" />
 
                             <ContentPresenter x:Name="GlyphPresenter"
                                               HorizontalAlignment="Center"
@@ -132,21 +133,19 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Halo" Property="Opacity" Value="0.92" />
-                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                <Setter TargetName="Halo" Property="Fill" Value="#48484C" />
+                                <Setter TargetName="Halo" Property="Stroke" Value="#616169" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Halo" Property="Fill" Value="#28FF8D33" />
-                                <Setter TargetName="Halo" Property="Stroke" Value="{DynamicResource AccentOrangeBrush}" />
-                                <Setter TargetName="Halo" Property="Opacity" Value="1" />
-                                <Setter Property="Foreground" Value="{DynamicResource AccentOrangeBrush}" />
+                                <Setter TargetName="Halo" Property="Fill" Value="#2F2F32" />
+                                <Setter TargetName="Halo" Property="Stroke" Value="#F7F7F7" />
                             </Trigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
                                     <Condition Property="IsMouseOver" Value="True" />
                                     <Condition Property="IsChecked" Value="True" />
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="Halo" Property="Fill" Value="#34FF9947" />
+                                <Setter TargetName="Halo" Property="Fill" Value="#3B3B3F" />
                             </MultiTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="RootGrid" Property="Opacity" Value="0.42" />
@@ -941,6 +940,130 @@
             <Setter Property="Background" Value="#24A53D3D" />
         </Style>
 
+        <Style x:Key="SpotifySettingsConnectButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Width" Value="168" />
+            <Setter Property="Height" Value="46" />
+            <Setter Property="Padding" Value="18,0" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="#F6FFF9" />
+            <Setter Property="Background" Value="#2D323D" />
+            <Setter Property="BorderBrush" Value="#475161" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="ButtonScaleTransform" ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform x:Name="ButtonTranslateTransform" Y="0" />
+                                </TransformGroup>
+                            </Grid.RenderTransform>
+
+                            <Border x:Name="GlowBorder"
+                                    Background="#401DB954"
+                                    BorderBrush="#6F1DB954"
+                                    BorderThickness="1"
+                                    CornerRadius="18"
+                                    Opacity="0" />
+
+                            <Border x:Name="RootBorder"
+                                    Margin="1"
+                                    CornerRadius="17"
+                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                <Border.Background>
+                                    <SolidColorBrush x:Name="RootBackgroundBrush" Color="#2D323D" />
+                                </Border.Background>
+                                <Border.BorderBrush>
+                                    <SolidColorBrush x:Name="RootBorderBrush" Color="#475161" />
+                                </Border.BorderBrush>
+
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Margin="{TemplateBinding Padding}" />
+                            </Border>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="MouseEnter">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="GlowBorder"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1"
+                                                         Duration="0:0:0.18" />
+                                        <ColorAnimation Storyboard.TargetName="RootBackgroundBrush"
+                                                        Storyboard.TargetProperty="Color"
+                                                        To="#1E3C2D"
+                                                        Duration="0:0:0.18" />
+                                        <ColorAnimation Storyboard.TargetName="RootBorderBrush"
+                                                        Storyboard.TargetProperty="Color"
+                                                        To="#37D06F"
+                                                        Duration="0:0:0.18" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScaleTransform"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="1.035"
+                                                         Duration="0:0:0.18" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScaleTransform"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="1.035"
+                                                         Duration="0:0:0.18" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonTranslateTransform"
+                                                         Storyboard.TargetProperty="Y"
+                                                         To="-1"
+                                                         Duration="0:0:0.18" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+
+                            <EventTrigger RoutedEvent="MouseLeave">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="GlowBorder"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0"
+                                                         Duration="0:0:0.2" />
+                                        <ColorAnimation Storyboard.TargetName="RootBackgroundBrush"
+                                                        Storyboard.TargetProperty="Color"
+                                                        To="#2D323D"
+                                                        Duration="0:0:0.2" />
+                                        <ColorAnimation Storyboard.TargetName="RootBorderBrush"
+                                                        Storyboard.TargetProperty="Color"
+                                                        To="#475161"
+                                                        Duration="0:0:0.2" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScaleTransform"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="1"
+                                                         Duration="0:0:0.2" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScaleTransform"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="1"
+                                                         Duration="0:0:0.2" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonTranslateTransform"
+                                                         Storyboard.TargetProperty="Y"
+                                                         To="0"
+                                                         Duration="0:0:0.2" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="GlowBorder" Property="Opacity" Value="0.86" />
+                                <Setter TargetName="RootBorder" Property="Opacity" Value="0.94" />
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="RootBorder" Property="Opacity" Value="0.44" />
+                                <Setter TargetName="GlowBorder" Property="Opacity" Value="0" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SettingsChoiceButtonBaseStyle"
              BasedOn="{StaticResource SettingsActionButtonStyle}"
                TargetType="{x:Type Button}">
@@ -1195,6 +1318,8 @@
 
     <Grid>
         <Border x:Name="ShellBorder"
+                Width="356"
+                HorizontalAlignment="Left"
                 Background="{Binding CustomBackground, Converter={StaticResource CustomBackgroundConverter}, ConverterParameter=ShellBackgroundBrush}"
                 CornerRadius="28">
             <Grid x:Name="ShellClipHost">
@@ -1224,27 +1349,15 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <Border Width="50"
-                                    Height="50"
-                                    Margin="0,0,12,0"
-                                    Background="{DynamicResource BrandTileBrush}"
-                                    BorderBrush="{DynamicResource BrandTileBorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="12">
-                                <Viewbox Width="30"
-                                         Height="30"
-                                         HorizontalAlignment="Center"
-                                         VerticalAlignment="Center">
-                                    <Canvas Width="32" Height="32">
-                                        <Path Stroke="{DynamicResource BrandGlyphBrush}"
-                                              StrokeThickness="3.4"
-                                              StrokeStartLineCap="Round"
-                                              StrokeEndLineCap="Round"
-                                              StrokeLineJoin="Round"
-                                              Data="M4,16 L10,16 C12,16 12,11 14,11 C16,11 16,21 18,21 C20,21 20,8 22,8 C24,8 24,16 26,16 C28,16 28,12 30,12" />
-                                    </Canvas>
-                                </Viewbox>
-                            </Border>
+                            <Image Width="40"
+                                   Height="40"
+                                   Margin="0,0,12,0"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                   SnapsToDevicePixels="True"
+                                   Source="pack://application:,,,/AudioBit.App;component/Assets/AudioBitHeaderLogo.png"
+                                   Stretch="Uniform" />
 
                             <StackPanel Grid.Column="1"
                                         VerticalAlignment="Center">
@@ -1263,25 +1376,30 @@
                                               ToolTip="{Binding PinToggleToolTip}"
                                               Visibility="{Binding ShowAlwaysOnTopPin, Converter={StaticResource BooleanToVisibilityConverter}}"
                                               Style="{StaticResource PinOrbToggleStyle}">
-                                    <Grid Width="18"
-                                          Height="18"
-                                          RenderTransformOrigin="0.5,0.5">
-                                        <Grid.RenderTransform>
-                                            <RotateTransform Angle="-18" />
-                                        </Grid.RenderTransform>
-                                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
-                                              Data="M6.2,3.3 L11.8,3.3 L13.3,6.8 L9,10.3 L4.7,6.8 Z" />
-                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
-                                              StrokeThickness="1.45"
-                                              StrokeStartLineCap="Round"
-                                              StrokeEndLineCap="Round"
-                                              Data="M9,10.2 L9,15" />
-                                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
-                                              StrokeThickness="1.45"
-                                              StrokeStartLineCap="Round"
-                                              StrokeEndLineCap="Round"
-                                              Data="M6.3,6.2 L11.7,6.2" />
-                                    </Grid>
+                                    <Viewbox Width="16"
+                                             Height="16">
+                                        <Grid Width="16"
+                                              Height="16"
+                                              RenderTransformOrigin="0.5,0.5">
+                                            <Grid.RenderTransform>
+                                                <RotateTransform Angle="35" />
+                                            </Grid.RenderTransform>
+                                            <Border Width="6.2"
+                                                    Height="2.6"
+                                                    Margin="0,1.2,0,0"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Top"
+                                                    Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                                                    CornerRadius="0.6" />
+                                            <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                                                  Data="M3.3,5.4 H12.7 C13.18,5.4 13.48,5.92 13.24,6.33 L10.92,10.23 C10.69,10.62 10.27,10.86 9.82,10.86 H6.18 C5.73,10.86 5.31,10.62 5.08,10.23 L2.76,6.33 C2.52,5.92 2.82,5.4 3.3,5.4 Z" />
+                                            <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                                                  StrokeThickness="1.35"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  Data="M8,10.9 L8,14.8" />
+                                        </Grid>
+                                    </Viewbox>
                                 </ToggleButton>
 
                                 <Button Margin="0,0,8,0"
@@ -1567,7 +1685,7 @@
                                     <DataTemplate>
                                         <abui:AudioMeterControl CardOpacity="{Binding Opacity}"
                                                                 IsLowPerformanceMode="{Binding DataContext.IsLowPerformanceMode, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                PeakValue="{Binding Peak}" />
+                                                                PeakValue="{Binding DisplayPeak}" />
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
@@ -3111,6 +3229,101 @@
                                 </StackPanel>
                             </Border>
 
+                            <Border Margin="0,10,0,0"
+                                    Padding="14,10,14,12"
+                                    Style="{StaticResource SettingsSectionCardStyle}">
+                                <StackPanel>
+                                    <StackPanel Margin="0,6,0,0"
+                                                Orientation="Horizontal">
+                                        <Border Width="28"
+                                                Height="28"
+                                                Background="{DynamicResource OverlayOptionBrush}"
+                                                BorderBrush="{DynamicResource OverlayOptionBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="10">
+                                            <Image Width="14"
+                                                   Height="14"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Source="{StaticResource SpotifyLogoImage}"
+                                                   Stretch="Uniform" />
+                                        </Border>
+                                        <StackPanel Margin="10,0,0,0">
+                                            <TextBlock FontSize="12.5"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                       Text="Spotify" />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <Grid Margin="0,12,0,0">
+                                        <!-- Connect button (visible when NOT authenticated) -->
+                                        <Button Command="{Binding Spotify.ConnectCommand}">
+                                            <Button.Style>
+                                                <Style TargetType="{x:Type Button}" BasedOn="{StaticResource SpotifySettingsConnectButtonStyle}">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Spotify.IsAuthenticated}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <TextBlock FontSize="11.5"
+                                                       FontWeight="SemiBold"
+                                                       Text="{Binding Spotify.ConnectButtonText}" />
+                                        </Button>
+                                        <!-- Disconnect button (visible when authenticated) -->
+                                        <Button Command="{Binding Spotify.DisconnectCommand}"
+                                                Width="168" Height="46" Padding="18,0"
+                                                HorizontalAlignment="Left"
+                                                Cursor="Hand"
+                                                Foreground="#FFD4D4"
+                                                Background="#3D2A2A"
+                                                BorderBrush="#6B3A3A"
+                                                BorderThickness="1"
+                                                FocusVisualStyle="{x:Null}">
+                                            <Button.Style>
+                                                <Style TargetType="{x:Type Button}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="{x:Type Button}">
+                                                                <Border CornerRadius="18"
+                                                                        Background="{TemplateBinding Background}"
+                                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                                        BorderThickness="{TemplateBinding BorderThickness}">
+                                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                                                      VerticalAlignment="Center"
+                                                                                      Margin="{TemplateBinding Padding}" />
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#4D3232" />
+                                                                        <Setter Property="BorderBrush" Value="#8B4A4A" />
+                                                                    </Trigger>
+                                                                    <Trigger Property="IsPressed" Value="True">
+                                                                        <Setter Property="Background" Value="#5A3636" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Spotify.IsAuthenticated}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <TextBlock FontSize="11.5"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#FF8A8A"
+                                                       Text="Disconnect Spotify" />
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
                             <TextBlock Margin="0,18,0,0"
                                        FontSize="12"
                                        FontWeight="SemiBold"
@@ -3535,6 +3748,47 @@
                                         <ToggleButton Grid.Column="1"
                                                       VerticalAlignment="Center"
                                                       IsChecked="{Binding ShowAlwaysOnTopPin, Mode=TwoWay}"
+                                                      Style="{StaticResource SettingsToggleStyle}" />
+                                    </Grid>
+
+                                    <Border Height="1" Background="{DynamicResource DividerBrush}" />
+
+                                    <Grid Margin="0,6,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Width="28"
+                                                    Height="28"
+                                                    Background="{DynamicResource OverlayOptionBrush}"
+                                                    BorderBrush="{DynamicResource OverlayOptionBorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="10">
+                                                <Viewbox Width="13"
+                                                         Height="13"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center">
+                                                    <Canvas Width="24" Height="24">
+                                                        <Path Fill="#1DB954"
+                                                              Data="M12,2 C6.5,2 2,6.5 2,12 C2,17.5 6.5,22 12,22 C17.5,22 22,17.5 22,12 C22,6.5 17.5,2 12,2 M16.2,16.8 C16,17.1 15.6,17.2 15.3,17 C13.2,15.7 10.5,15.3 7.1,16 C6.7,16.1 6.4,15.8 6.3,15.5 C6.2,15.1 6.5,14.8 6.8,14.7 C10.5,14 13.5,14.4 15.9,15.9 C16.2,16.1 16.3,16.5 16.2,16.8 M17.5,14.2 C17.3,14.6 16.8,14.7 16.4,14.5 C14,13 10.3,12.5 7,13.4 C6.5,13.5 6,13.3 5.9,12.8 C5.8,12.3 6,11.8 6.5,11.7 C10.3,10.7 14.4,11.2 17.1,12.9 C17.5,13.1 17.7,13.8 17.5,14.2 M17.6,11.5 C14.7,9.8 9.5,9.6 6.5,10.6 C5.9,10.8 5.3,10.4 5.1,9.8 C4.9,9.2 5.3,8.6 5.9,8.4 C9.4,7.3 15.1,7.5 18.5,9.5 C19,9.8 19.2,10.5 18.9,11 C18.6,11.5 17.9,11.7 17.6,11.5 Z" />
+                                                    </Canvas>
+                                                </Viewbox>
+                                            </Border>
+                                            <StackPanel Margin="10,0,0,0">
+                                                <TextBlock FontSize="12.5"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           Text="Spotify Widget" />
+                                                <TextBlock Margin="0,2,0,0"
+                                                           FontSize="10.5"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           Text="Show the Spotify playback widget on the side of the window."
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <ToggleButton Grid.Column="1"
+                                                      VerticalAlignment="Center"
+                                                      IsChecked="{Binding SpotifyWidgetEnabled, Mode=TwoWay}"
                                                       Style="{StaticResource SettingsToggleStyle}" />
                                     </Grid>
 
@@ -4278,5 +4532,14 @@
                 </Grid>
             </Grid>
         </Border>
+
+        <controls:SpotifyWidgetControl x:Name="SpotifyWidget"
+                                       Width="48"
+                                       Height="136"
+                                       Margin="0,96,0,0"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Top"
+                                       DataContext="{Binding Spotify}"
+                                       Visibility="{Binding DataContext.SpotifyWidgetEnabled, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>
 </Window>

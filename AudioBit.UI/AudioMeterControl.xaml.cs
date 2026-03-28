@@ -8,13 +8,18 @@ namespace AudioBit.UI;
 
 public partial class AudioMeterControl : UserControl
 {
-    private const double PeakAttackPerSecond = 9.5;
-    private const double PeakReleasePerSecond = 4.4;
-    private const double PulseReleasePerSecond = 3.6;
-    private const double BarAttackPerSecond = 18.0;
-    private const double BarReleasePerSecond = 9.0;
-    private const double DynamicBarThreshold = 0.003;
-    private const double StopThreshold = 0.0025;
+    private const double PeakAttackPerSecond = 13.0;
+    private const double PeakReleasePerSecond = 5.1;
+    private const double PulseReleasePerSecond = 2.4;
+    private const double BarAttackPerSecond = 24.0;
+    private const double BarReleasePerSecond = 10.5;
+    private const double DynamicBarThreshold = 0.0018;
+    private const double StopThreshold = 0.0015;
+    private const double InputNoiseFloor = 0.003;
+    private const double InputSensitivityExponent = 0.63;
+    private const double InputSensitivityGain = 1.14;
+    private const double InputSensitivityBlend = 0.22;
+    private const double PeakPulseRiseThreshold = 0.009;
 
     public static readonly DependencyProperty PeakValueProperty = DependencyProperty.Register(
         nameof(PeakValue),
@@ -119,7 +124,8 @@ public partial class AudioMeterControl : UserControl
 
         _hasAnimatedIn = true;
         _spectrumTime = 0.0;
-        _targetPeak = Math.Clamp(PeakValue, 0.0, 1.0);
+        var initialPeak = ShapePeakSignal(Math.Clamp(PeakValue, 0.0, 1.0));
+        _targetPeak = initialPeak;
         _displayPeak = _targetPeak;
         _lastSamplePeak = _targetPeak;
         AdvanceSpectrum(1.0 / 60.0);
@@ -140,15 +146,16 @@ public partial class AudioMeterControl : UserControl
     private void UpdatePeakSignal(double targetPeak)
     {
         var clampedPeak = Math.Clamp(targetPeak, 0.0, 1.0);
-        var rise = Math.Max(0.0, clampedPeak - _lastSamplePeak);
-        if (rise > 0.015)
+        var energizedPeak = ShapePeakSignal(clampedPeak);
+        var rise = Math.Max(0.0, energizedPeak - _lastSamplePeak);
+        if (rise > PeakPulseRiseThreshold)
         {
-            var transient = Math.Clamp((rise * 2.8) + (clampedPeak * 0.32), 0.0, 1.0);
+            var transient = Math.Clamp((rise * 4.4) + (energizedPeak * 0.58), 0.0, 1.0);
             _peakPulse = Math.Max(_peakPulse, transient);
         }
 
-        _lastSamplePeak = clampedPeak;
-        _targetPeak = clampedPeak;
+        _lastSamplePeak = energizedPeak;
+        _targetPeak = energizedPeak;
 
         if (!_hasAnimatedIn)
         {
@@ -222,12 +229,12 @@ public partial class AudioMeterControl : UserControl
             var position = index / Math.Max(1.0, _meterTransforms.Length - 1.0);
             var centerWeight = 1.0 - (Math.Abs(position - 0.5) * 2.0);
             var baseFloor = _barFloors[index];
-            var envelopeWeight = 0.46 + (_barBias[index] * 0.34) + (centerWeight * 0.18);
-            var transientWeight = 0.12 + (_barBias[index] * 0.10) + (centerWeight * 0.28);
+            var envelopeWeight = 0.54 + (_barBias[index] * 0.40) + (centerWeight * 0.24);
+            var transientWeight = 0.18 + (_barBias[index] * 0.16) + (centerWeight * 0.34);
             var envelope = _displayPeak * envelopeWeight;
             var transient = _peakPulse * transientWeight;
-            var energy = Math.Clamp(envelope + transient, 0.0, 1.0);
-            var targetScale = baseFloor + envelope + transient + ComputeOrganicMotion(index, position, centerWeight, energy);
+            var energy = Math.Clamp((envelope * 1.05) + (transient * 1.12), 0.0, 1.0);
+            var targetScale = baseFloor + (envelope * 1.08) + (transient * 1.12) + ComputeOrganicMotion(index, position, centerWeight, energy);
 
             if (_displayPeak <= StopThreshold && _peakPulse <= StopThreshold)
             {
@@ -261,11 +268,11 @@ public partial class AudioMeterControl : UserControl
         var flutter = Math.Sin((_spectrumTime * (8.1 + (_barBias[index] * 1.8))) + (phase * 1.6));
         var jitter = Math.Sin((_spectrumTime * (11.8 + (index * 0.13))) + (phase * 2.4));
         var blend =
-            (Math.Max(0.0, wave) * 0.58)
-            + ((flutter + 1.0) * 0.22)
-            + ((jitter + 1.0) * 0.10);
-        var amplitude = (0.012 + (centerWeight * 0.022) + (_barBias[index] * 0.014))
-            * (0.30 + (energy * 1.65));
+            (Math.Max(0.0, wave) * 0.54)
+            + ((flutter + 1.0) * 0.26)
+            + ((jitter + 1.0) * 0.13);
+        var amplitude = (0.020 + (centerWeight * 0.030) + (_barBias[index] * 0.017))
+            * (0.34 + (energy * 1.92));
 
         return blend * amplitude;
     }
@@ -325,7 +332,7 @@ public partial class AudioMeterControl : UserControl
 
         for (var index = 0; index < _meterTransforms.Length; index++)
         {
-            var baseFloor = 0.04 + (_barBias[index] * 0.015);
+            var baseFloor = 0.055 + (_barBias[index] * 0.022);
             _barFloors[index] = baseFloor;
             _barScales[index] = baseFloor;
         }
@@ -374,6 +381,18 @@ public partial class AudioMeterControl : UserControl
 
         var blend = 1.0 - Math.Exp(-Math.Max(0.0, rate) * frameSeconds);
         return current + ((target - current) * blend);
+    }
+
+    private static double ShapePeakSignal(double peak)
+    {
+        if (peak <= InputNoiseFloor)
+        {
+            return 0.0;
+        }
+
+        var normalizedPeak = Math.Clamp((peak - InputNoiseFloor) / (1.0 - InputNoiseFloor), 0.0, 1.0);
+        var liftedPeak = Math.Pow(normalizedPeak, InputSensitivityExponent);
+        return Math.Clamp((liftedPeak * InputSensitivityGain) + (normalizedPeak * InputSensitivityBlend), 0.0, 1.0);
     }
 
     private void ApplyPerformanceModeVisuals()

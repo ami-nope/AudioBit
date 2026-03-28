@@ -31,4 +31,17 @@ public sealed class AppAudioModelTests
 
         Assert.Equal(1.0, model.Opacity);
     }
+
+    [Fact]
+    public void AudiblePeak_DoesNotApplyVolumeTwice()
+    {
+        var model = new AppAudioModel
+        {
+            Volume = 0.2f,
+            Peak = 0.18f,
+            IsMuted = false,
+        };
+
+        Assert.Equal(0.18f, model.AudiblePeak, 3);
+    }
 }

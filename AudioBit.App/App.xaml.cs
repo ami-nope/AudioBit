@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Http;
 using System.Windows;
 using AudioBit.App.Infrastructure;
 using AudioBit.App.Services;
@@ -30,13 +31,18 @@ public partial class App : Application
         var qrCodeService = new QrCodeService(externalLinks);
         _appSettingsStore = new AppSettingsStore();
         _startupRegistrationService = new StartupRegistrationService();
+        var spotifyAuthStateStore = new SpotifyAuthStateStore();
+        var spotifyService = new SpotifyService(spotifyAuthStateStore, new HttpClient { Timeout = TimeSpan.FromSeconds(12) });
+        var spotifyClientId = SpotifyClientIdResolver.Resolve(_appSettingsStore, spotifyAuthStateStore);
+        var spotifyViewModel = new SpotifyViewModel(spotifyService, spotifyClientId);
         _mainViewModel = new MainViewModel(
             _audioSessionService,
             _remoteClientService,
             qrCodeService,
             _appSettingsStore,
             _startupRegistrationService,
-            _appUpdaterService);
+            _appUpdaterService,
+            spotifyViewModel);
 
         var mainWindow = new MainWindow(_mainViewModel);
         MainWindow = mainWindow;

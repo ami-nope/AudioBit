@@ -12,6 +12,17 @@ function Test-VersionString([string]$Value)
     return $Value -match '^\d+\.\d+(?:\.\d+)?$'
 }
 
+function Convert-ToSemVer([string]$Value)
+{
+    $parts = $Value.Split('.')
+    if ($parts.Length -eq 2)
+    {
+        return "$Value.0"
+    }
+
+    return $Value
+}
+
 function Get-NextMinorVersion([string]$CurrentVersion)
 {
     $parts = $CurrentVersion.Split('.') | ForEach-Object { [int]$_ }
@@ -58,11 +69,17 @@ try
     }
 
     $nextVersion = Get-NextMinorVersion $currentVersion
+    $packageVersion = Convert-ToSemVer $nextVersion
     $releaseRootRelative = Join-Path "artifacts\github-release" $nextVersion
     $releaseRoot = Join-Path $repoRoot $releaseRootRelative
+    $githubUploadRoot = Join-Path $releaseRoot "GitHub-Upload"
+    $bootstrapInstallerDir = Join-Path $githubUploadRoot "AudioBit-Setup"
+    $bootstrapInstallerZipPath = Join-Path $githubUploadRoot "AudioBit-Setup.zip"
+    $releaseBriefPath = Join-Path $githubUploadRoot "release-notes-brief.txt"
     $bootstrapScriptPath = Join-Path $PSScriptRoot "Publish-Release.ps1"
     $bundleScriptPath = Join-Path $PSScriptRoot "Build-ReleaseBundle.ps1"
     $rootReadmePath = Join-Path $releaseRoot "README.txt"
+    $uploadNotesPath = Join-Path $githubUploadRoot "UPLOAD-TO-GITHUB.txt"
     $zipPath = Join-Path (Split-Path $releaseRoot -Parent) ($nextVersion + ".zip")
 
     @{
@@ -74,18 +91,8 @@ try
     Write-Host "Next version: $nextVersion"
     Write-Host "Building GitHub release folder at $releaseRoot"
 
-    $bootstrapArgs = @(
-        "-Version", $nextVersion,
-        "-Configuration", $Configuration,
-        "-Runtime", $Runtime,
-        "-VersionFolder", (Join-Path "github-release" $nextVersion)
-    )
-    if ($NoRestore)
-    {
-        $bootstrapArgs += "-NoRestore"
-    }
-
-    Invoke-Script $bootstrapScriptPath $bootstrapArgs "Publish-Release.ps1 failed."
+    Remove-Item $releaseRoot -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
 
     $bundleArgs = @(
         "-Version", $nextVersion,
@@ -101,6 +108,66 @@ try
 
     Invoke-Script $bundleScriptPath $bundleArgs "Build-ReleaseBundle.ps1 failed."
 
+    $bootstrapArgs = @(
+        "-Version", $nextVersion,
+        "-Configuration", $Configuration,
+        "-Runtime", $Runtime,
+        "-VersionFolder", (Join-Path "github-release" (Join-Path $nextVersion "GitHub-Upload")),
+        "-SetupFolderName", "AudioBit-Setup",
+        "-SkipRootReadme"
+    )
+    if ($NoRestore)
+    {
+        $bootstrapArgs += "-NoRestore"
+    }
+
+    Invoke-Script $bootstrapScriptPath $bootstrapArgs "Publish-Release.ps1 failed."
+
+    if (-not (Test-Path $bootstrapInstallerDir))
+    {
+        throw "The bootstrap installer folder was not created at $bootstrapInstallerDir"
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    Remove-Item $bootstrapInstallerZipPath -Force -ErrorAction SilentlyContinue
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $bootstrapInstallerDir,
+        $bootstrapInstallerZipPath,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $false)
+
+    $releaseBriefLines = @(
+        "AudioBit release brief",
+        "Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")",
+        "Previous version: $currentVersion",
+        "New version: $nextVersion",
+        "Runtime: $Runtime",
+        "Channel: stable",
+        "Tag to publish: $nextVersion",
+        "Primary GitHub setup asset: AudioBit-stable-Setup.exe",
+        "Feed asset: RELEASES-stable",
+        "Full package: AudioBit-$packageVersion-stable-full.nupkg",
+        "Portable package: AudioBit-stable-Portable.zip",
+        "Custom bootstrap installer folder: GitHub-Upload\\AudioBit-Setup",
+        "Custom bootstrap installer zip: GitHub-Upload\\AudioBit-Setup.zip",
+        "Version root zip: $nextVersion.zip",
+        "Auto-update support: enabled through Velopack assets and installer payload layout.",
+        "Upload guidance: use GitHub-Upload\\UPLOAD-TO-GITHUB.txt for the asset checklist."
+    )
+    $releaseBriefLines | Set-Content -Path $releaseBriefPath -Encoding utf8
+
+    if (Test-Path $uploadNotesPath)
+    {
+@"
+
+Optional custom bootstrap installer upload:
+- AudioBit-Setup.zip
+
+Brief text release note:
+- release-notes-brief.txt
+"@ | Add-Content -Path $uploadNotesPath -Encoding utf8
+    }
+
     @"
 AudioBit GitHub release folder
 Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -109,13 +176,15 @@ New version: $nextVersion
 Runtime: $Runtime
 
 Folders in this versioned release root:
-- AudioBit-Setup
-  Custom AudioBit.Setup bootstrap installer folder for sharing directly with other PCs.
-  The payload is Velopack-based, so installs remain updater-friendly.
-
 - GitHub-Upload
   Updater-friendly Velopack assets for GitHub Releases upload.
   Upload the files listed in GitHub-Upload\UPLOAD-TO-GITHUB.txt.
+  Custom bootstrap installer folder:
+    GitHub-Upload\AudioBit-Setup
+  Zipped custom bootstrap installer:
+    GitHub-Upload\AudioBit-Setup.zip
+  Brief text release note:
+    GitHub-Upload\release-notes-brief.txt
 
 Zip:
   $zipPath
@@ -126,8 +195,10 @@ version.json has been updated to:
 
     Write-Host "GitHub release folder created."
     Write-Host "Version root: $releaseRoot"
-    Write-Host "Bootstrap installer: $(Join-Path $releaseRoot 'AudioBit-Setup')"
-    Write-Host "GitHub upload folder: $(Join-Path $releaseRoot 'GitHub-Upload')"
+    Write-Host "GitHub upload folder: $githubUploadRoot"
+    Write-Host "Bootstrap installer: $bootstrapInstallerDir"
+    Write-Host "Bootstrap installer zip: $bootstrapInstallerZipPath"
+    Write-Host "Brief release note: $releaseBriefPath"
 }
 catch
 {

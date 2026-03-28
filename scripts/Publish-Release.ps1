@@ -3,6 +3,8 @@ param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
     [string]$VersionFolder = "publish-ready",
+    [string]$SetupFolderName = "AudioBit-Setup",
+    [switch]$SkipRootReadme,
     [switch]$NoRestore
 )
 
@@ -61,11 +63,12 @@ $displayVersion = $Version.Trim()
 $semVerVersion = Convert-ToSemVer $displayVersion
 $assemblyVersion = Convert-ToAssemblyVersion $semVerVersion
 $publishRoot = Join-Path $repoRoot ("artifacts\" + $VersionFolder)
-$setupDir = Join-Path $publishRoot "AudioBit-Setup"
+$setupDir = Join-Path $publishRoot $SetupFolderName
 $payloadDir = Join-Path $setupDir "payload"
 $payloadZip = Join-Path $payloadDir ("AudioBit-" + $Runtime + ".zip")
 $stagingRoot = Join-Path $publishRoot "_staging"
-$readmePath = Join-Path $publishRoot "README.txt"
+$rootReadmePath = Join-Path $publishRoot "README.txt"
+$setupReadmePath = Join-Path $setupDir "README.txt"
 $packScriptPath = Join-Path $PSScriptRoot "Pack-Velopack.ps1"
 
 $originalDotnetCliHome = $env:DOTNET_CLI_HOME
@@ -86,7 +89,8 @@ try
     $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
     $env:MSBuildEnableWorkloadResolver = "false"
 
-    Remove-Item $publishRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $setupDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path $publishRoot -Force | Out-Null
 
     $packScriptArgs = @(
@@ -137,7 +141,7 @@ try
     New-Item -ItemType Directory -Path $payloadDir -Force | Out-Null
     Copy-Item $portablePayload.FullName -Destination $payloadZip -Force
 
-    @"
+    $readmeContent = @"
 AudioBit bootstrap installer output
 Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 Display version: $displayVersion
@@ -154,7 +158,13 @@ This setup folder keeps the custom AudioBit.Setup bootstrap installer UI, but th
 bundled payload is the Velopack portable layout. Installs made from this setup can
 participate in the in-app updater because the installed files include Update.exe,
 sq.version, and the Velopack launcher.
-"@ | Set-Content -Path $readmePath -Encoding utf8
+"@
+
+    $readmeContent | Set-Content -Path $setupReadmePath -Encoding utf8
+    if (-not $SkipRootReadme)
+    {
+        $readmeContent | Set-Content -Path $rootReadmePath -Encoding utf8
+    }
 
     Write-Host "Bootstrap installer output created."
     Write-Host "Installer folder: $setupDir"
