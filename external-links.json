@@ -1,6 +1,6 @@
 {
   "relay": {
-    "http_base_url": "https://audiobit-relay-production.up.railway.app/",
+    "http_base_url": "https://https://audiobit-relay.up.railway.app/",
     "ws_url": "wss://https://audiobit-relay.up.railway.app//ws"
   },
   "remote_web": {
