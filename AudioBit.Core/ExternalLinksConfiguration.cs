@@ -8,8 +8,8 @@ namespace AudioBit.Core;
 public sealed class ExternalLinksConfiguration
 {
     public const string RemoteConfigurationUrl = "https://raw.githubusercontent.com/ami-nope/AudioBit/main/external-links.json";
-    private const string DefaultRelayHttp = "https://audiobit-relay-production.up.railway.app/";
-    private const string DefaultRelayWs = "wss://audiobit-relay-production.up.railway.app/ws";
+    private const string DefaultRelayHttp = "https://audiobit-relay.up.railway.app/";
+    private const string DefaultRelayWs = "wss://audiobit-relay.up.railway.app/ws";
     private const string DefaultRemoteConnectBaseUrl = "https://audiobit-remote.vercel.app/connect";
     private const string DefaultGeoIpLookupUrlTemplate = "https://ipapi.co/{ip}/json/";
     private const string DefaultAboutUrl = "https://github.com/ami-nope/AudioBit";
@@ -17,6 +17,8 @@ public sealed class ExternalLinksConfiguration
     public static ExternalLinksConfiguration Default { get; } = new(
         relayHttpBaseUri: new Uri(DefaultRelayHttp, UriKind.Absolute),
         relayWebSocketUri: new Uri(DefaultRelayWs, UriKind.Absolute),
+        backupRelayHttpBaseUri: null,
+        backupRelayWebSocketUri: null,
         remoteConnectBaseUri: new Uri(DefaultRemoteConnectBaseUrl, UriKind.Absolute),
         geoIpLookupUrlTemplate: DefaultGeoIpLookupUrlTemplate,
         aboutUri: new Uri(DefaultAboutUrl, UriKind.Absolute),
@@ -25,6 +27,8 @@ public sealed class ExternalLinksConfiguration
     public ExternalLinksConfiguration(
         Uri relayHttpBaseUri,
         Uri relayWebSocketUri,
+        Uri? backupRelayHttpBaseUri,
+        Uri? backupRelayWebSocketUri,
         Uri remoteConnectBaseUri,
         string geoIpLookupUrlTemplate,
         Uri aboutUri,
@@ -32,6 +36,8 @@ public sealed class ExternalLinksConfiguration
     {
         RelayHttpBaseUri = relayHttpBaseUri ?? throw new ArgumentNullException(nameof(relayHttpBaseUri));
         RelayWebSocketUri = relayWebSocketUri ?? throw new ArgumentNullException(nameof(relayWebSocketUri));
+        BackupRelayHttpBaseUri = backupRelayHttpBaseUri;
+        BackupRelayWebSocketUri = backupRelayWebSocketUri;
         RemoteConnectBaseUri = remoteConnectBaseUri ?? throw new ArgumentNullException(nameof(remoteConnectBaseUri));
         GeoIpLookupUrlTemplate = string.IsNullOrWhiteSpace(geoIpLookupUrlTemplate)
             ? throw new ArgumentException("Geo-IP URL template is required.", nameof(geoIpLookupUrlTemplate))
@@ -43,6 +49,10 @@ public sealed class ExternalLinksConfiguration
     public Uri RelayHttpBaseUri { get; }
 
     public Uri RelayWebSocketUri { get; }
+
+    public Uri? BackupRelayHttpBaseUri { get; }
+
+    public Uri? BackupRelayWebSocketUri { get; }
 
     public Uri RemoteConnectBaseUri { get; }
 
@@ -133,6 +143,10 @@ public static class ExternalLinksConfigurationLoader
         relayWebSocketUri ??= DeriveWsFromHttp(relayHttpBaseUri);
         relayHttpBaseUri ??= defaults.RelayHttpBaseUri;
         relayWebSocketUri ??= defaults.RelayWebSocketUri;
+        var backupRelayHttpBaseUri = TryReadAbsoluteUri(document.Relay?.BackupHttpBaseUrl, Uri.UriSchemeHttp, Uri.UriSchemeHttps);
+        var backupRelayWebSocketUri = TryReadAbsoluteUri(document.Relay?.BackupWsUrl, "ws", "wss");
+        backupRelayHttpBaseUri ??= DeriveHttpBaseFromWs(backupRelayWebSocketUri);
+        backupRelayWebSocketUri ??= DeriveWsFromHttp(backupRelayHttpBaseUri);
 
         var remoteConnectBaseUri = TryReadAbsoluteUri(document.RemoteWeb?.ConnectBaseUrl, Uri.UriSchemeHttp, Uri.UriSchemeHttps)
             ?? defaults.RemoteConnectBaseUri;
@@ -144,6 +158,8 @@ public static class ExternalLinksConfigurationLoader
         return new ExternalLinksConfiguration(
             relayHttpBaseUri,
             relayWebSocketUri,
+            backupRelayHttpBaseUri,
+            backupRelayWebSocketUri,
             remoteConnectBaseUri,
             geoIpLookupUrlTemplate,
             aboutUri,
@@ -286,6 +302,12 @@ public static class ExternalLinksConfigurationLoader
 
         [JsonPropertyName("ws_url")]
         public string? WsUrl { get; init; }
+
+        [JsonPropertyName("backup_http_base_url")]
+        public string? BackupHttpBaseUrl { get; init; }
+
+        [JsonPropertyName("backup_ws_url")]
+        public string? BackupWsUrl { get; init; }
     }
 
     private sealed class RemoteWebDocument

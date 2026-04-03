@@ -219,6 +219,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         RefreshRemotePairingCommand = new AsyncRelayCommand(RefreshRemotePairingAsync);
         GenerateRemoteQrCodeCommand = new RelayCommand(GenerateRemoteQrCode, CanGenerateRemoteQrCode);
         OpenRemoteQrCommand = new RelayCommand(OpenRemoteQrUrl, () => !string.IsNullOrWhiteSpace(RemoteQrUrl));
+        OpenRemoteRelayServerCommand = new RelayCommand(OpenRemoteRelayServerUrl, () => !string.IsNullOrWhiteSpace(RemoteRelayServerUrl));
         CopyRemotePairCodeCommand = new RelayCommand(CopyRemotePairCode, () => !string.IsNullOrWhiteSpace(RemotePairCode) && !string.Equals(RemotePairCode, "------", StringComparison.Ordinal));
         CopyRemoteSessionIdCommand = new RelayCommand(CopyRemoteSessionId, () => !string.IsNullOrWhiteSpace(RemoteSessionId));
         RemoveRemoteDeviceCommand = new AsyncRelayCommand(RemoveRemoteDeviceAsync, CanRemoveRemoteDevice);
@@ -331,6 +332,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public IRelayCommand OpenRemoteQrCommand { get; }
 
+    public IRelayCommand OpenRemoteRelayServerCommand { get; }
+
     public IRelayCommand CopyRemotePairCodeCommand { get; }
 
     public IRelayCommand CopyRemoteSessionIdCommand { get; }
@@ -434,8 +437,31 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public string RemoteStatus
     {
         get => _remoteStatus;
-        private set => SetProperty(ref _remoteStatus, value);
+        private set
+        {
+            if (!SetProperty(ref _remoteStatus, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(RemoteStatusBrush));
+        }
     }
+
+    public Brush RemoteStatusBrush
+    {
+        get
+        {
+            if (IsRemoteStatusError(RemoteStatus))
+            {
+                return Brushes.OrangeRed;
+            }
+
+            return Application.Current?.Resources["TextSecondaryBrush"] as Brush ?? Brushes.Gray;
+        }
+    }
+
+    public string RemoteRelayServerUrl => _remoteClientService.CurrentRelayHttpBaseUri.AbsoluteUri;
 
     public string RemotePairCode
     {
@@ -2087,6 +2113,27 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void OpenRemoteRelayServerUrl()
+    {
+        if (string.IsNullOrWhiteSpace(RemoteRelayServerUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = RemoteRelayServerUrl,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Unable to open the relay server.\n\n{ex.Message}", "AudioBit", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void CopyRemotePairCode()
     {
         CopyTextToClipboard(RemotePairCode, "pair code");
@@ -2208,6 +2255,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _remoteRelayRouteLabel = info.RelayRouteLabel ?? string.Empty;
         _remoteRelayProbeLatencyMs = info.RelayProbeLatencyMs;
         _remoteConnectedDeviceCount = info.ConnectedDeviceCount;
+        OpenRemoteRelayServerCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(RemoteRelayServerUrl));
         IsRemoteConnected = info.IsConnected;
         if (sessionChanged)
         {
@@ -2603,6 +2652,22 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private static bool HasToken(string source, string token)
     {
         return source.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool IsRemoteStatusError(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Contains("error", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("failed", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("unable", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("refused", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("closed", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("disconnected", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatRemoteConnectedDuration(TimeSpan duration)

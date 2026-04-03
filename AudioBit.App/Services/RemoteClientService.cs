@@ -84,11 +84,17 @@ internal sealed class RemoteClientService : IDisposable
 
         _geoIpLookupUrlTemplate = externalLinks.GeoIpLookupUrlTemplate;
 
-        var fallbackHttp = GetConfiguredUri("AUDIOBIT_RELAY_HTTP", externalLinks.RelayHttpBaseUri.AbsoluteUri);
-        var fallbackWs = GetConfiguredUri("AUDIOBIT_RELAY_WS", externalLinks.RelayWebSocketUri.AbsoluteUri);
-        var primaryHttp = GetConfiguredUriOrNull("AUDIOBIT_RELAY_HTTP_PRIMARY");
-        var primaryWs = GetConfiguredUriOrNull("AUDIOBIT_RELAY_WS_PRIMARY");
-        _relayTargets = BuildRelayTargets(primaryHttp, primaryWs, fallbackHttp, fallbackWs);
+        var primaryHttp = GetConfiguredUri("AUDIOBIT_RELAY_HTTP", externalLinks.RelayHttpBaseUri.AbsoluteUri);
+        var primaryWs = GetConfiguredUri("AUDIOBIT_RELAY_WS", externalLinks.RelayWebSocketUri.AbsoluteUri);
+        var secondaryHttp = GetConfiguredUriOrNull("AUDIOBIT_RELAY_HTTP_PRIMARY");
+        var secondaryWs = GetConfiguredUriOrNull("AUDIOBIT_RELAY_WS_PRIMARY");
+        _relayTargets = BuildRelayTargets(
+            primaryHttp,
+            primaryWs,
+            secondaryHttp,
+            secondaryWs,
+            externalLinks.BackupRelayHttpBaseUri,
+            externalLinks.BackupRelayWebSocketUri);
         _activeRelayTargetIndex = 0;
         var initialTarget = _relayTargets[_activeRelayTargetIndex];
         _activeRelayRouteLabel = initialTarget.Name;
@@ -111,6 +117,17 @@ internal sealed class RemoteClientService : IDisposable
     public event Action<string>? LogMessage;
 
     public bool IsConnected => _relayConnection.IsConnected && _helloCompleted;
+
+    public Uri CurrentRelayHttpBaseUri
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _relayTargets[_activeRelayTargetIndex].HttpBaseUri;
+            }
+        }
+    }
 
     public RemoteSessionInfo SessionInfo
     {
@@ -387,6 +404,15 @@ internal sealed class RemoteClientService : IDisposable
                 Log($"Connection loop error: {ex.Message}");
                 shouldFailover = true;
                 failoverReason = ex.Message;
+            }
+
+            if (!cancellationToken.IsCancellationRequested && shouldFailover)
+            {
+                UpdateSessionInfo(
+                    status: BuildRelayFailureStatus(failoverReason),
+                    isRelayConnected: false,
+                    isRemoteConnected: false,
+                    clearConnectedDevice: true);
             }
 
             if (!cancellationToken.IsCancellationRequested && _autoReconnectEnabled)
@@ -2002,21 +2028,29 @@ internal sealed class RemoteClientService : IDisposable
     }
 
     private static IReadOnlyList<RelayTarget> BuildRelayTargets(
-        Uri? primaryHttp,
-        Uri? primaryWs,
-        Uri fallbackHttp,
-        Uri fallbackWs)
+        Uri primaryHttp,
+        Uri primaryWs,
+        Uri? secondaryHttp,
+        Uri? secondaryWs,
+        Uri? backupHttp,
+        Uri? backupWs)
     {
-        var targets = new List<RelayTarget>(2);
-        var resolvedSecondaryHttp = primaryHttp ?? DeriveHttpBaseFromWs(primaryWs);
-        var resolvedSecondaryWs = primaryWs ?? DeriveWsFromHttp(primaryHttp);
+        var targets = new List<RelayTarget>(3);
+        var resolvedSecondaryHttp = secondaryHttp ?? DeriveHttpBaseFromWs(secondaryWs);
+        var resolvedSecondaryWs = secondaryWs ?? DeriveWsFromHttp(secondaryHttp);
+        var resolvedBackupHttp = backupHttp ?? DeriveHttpBaseFromWs(backupWs);
+        var resolvedBackupWs = backupWs ?? DeriveWsFromHttp(backupHttp);
 
-        // Keep the remote-config/default endpoint as primary, with optional configured endpoint as secondary.
-        AddUniqueRelayTarget(targets, new RelayTarget("primary", fallbackHttp, fallbackWs, true));
+        AddUniqueRelayTarget(targets, new RelayTarget("primary", primaryHttp, primaryWs, true));
 
         if (resolvedSecondaryHttp is not null && resolvedSecondaryWs is not null)
         {
             AddUniqueRelayTarget(targets, new RelayTarget("secondary", resolvedSecondaryHttp, resolvedSecondaryWs, false));
+        }
+
+        if (resolvedBackupHttp is not null && resolvedBackupWs is not null)
+        {
+            AddUniqueRelayTarget(targets, new RelayTarget("backup", resolvedBackupHttp, resolvedBackupWs, false));
         }
 
         return targets;
@@ -2091,6 +2125,22 @@ internal sealed class RemoteClientService : IDisposable
             Fragment = string.Empty,
         };
         return builder.Uri;
+    }
+
+    private string BuildRelayFailureStatus(string reason)
+    {
+        string relayLabel;
+        lock (_syncRoot)
+        {
+            relayLabel = _activeRelayRouteLabel;
+        }
+
+        var prefix = string.IsNullOrWhiteSpace(relayLabel)
+            ? "Relay error"
+            : $"Relay error ({relayLabel})";
+        return string.IsNullOrWhiteSpace(reason)
+            ? prefix
+            : $"{prefix}: {reason.Trim()}";
     }
 
     private static Uri? GetConfiguredUriOrNull(string envVar)

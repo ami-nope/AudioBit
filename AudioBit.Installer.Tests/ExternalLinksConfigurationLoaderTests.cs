@@ -12,7 +12,9 @@ public sealed class ExternalLinksConfigurationLoaderTests
             {
               "relay": {
                 "http_base_url": "https://relay.example.com/",
-                "ws_url": "wss://relay.example.com/ws"
+                "ws_url": "wss://relay.example.com/ws",
+                "backup_http_base_url": "https://backup-relay.example.com/",
+                "backup_ws_url": "wss://backup-relay.example.com/ws"
               },
               "remote_web": {
                 "connect_base_url": "https://remote.example.com/connect"
@@ -31,6 +33,10 @@ public sealed class ExternalLinksConfigurationLoaderTests
         Assert.NotNull(configuration);
         Assert.Equal("https://relay.example.com/", configuration!.RelayHttpBaseUri.AbsoluteUri);
         Assert.Equal("wss://relay.example.com/ws", configuration.RelayWebSocketUri.AbsoluteUri);
+        Assert.NotNull(configuration.BackupRelayHttpBaseUri);
+        Assert.NotNull(configuration.BackupRelayWebSocketUri);
+        Assert.Equal("https://backup-relay.example.com/", configuration.BackupRelayHttpBaseUri!.AbsoluteUri);
+        Assert.Equal("wss://backup-relay.example.com/ws", configuration.BackupRelayWebSocketUri!.AbsoluteUri);
         Assert.Equal("https://remote.example.com/connect", configuration.RemoteConnectBaseUri.AbsoluteUri);
         Assert.Equal("https://geo.example.com/{ip}", configuration.GeoIpLookupUrlTemplate);
         Assert.Equal("https://example.com/about", configuration.AboutUri.AbsoluteUri);
@@ -53,6 +59,28 @@ public sealed class ExternalLinksConfigurationLoaderTests
         Assert.NotNull(configuration);
         Assert.Equal("https://relay.example.com/", configuration!.RelayHttpBaseUri.AbsoluteUri);
         Assert.Equal("wss://relay.example.com/ws", configuration.RelayWebSocketUri.AbsoluteUri);
+        Assert.Null(configuration.BackupRelayHttpBaseUri);
+        Assert.Null(configuration.BackupRelayWebSocketUri);
+    }
+
+    [Fact]
+    public void TryParseJson_DerivesBackupRelayWebSocketUrlFromBackupHttpBaseUrl()
+    {
+        const string json = """
+            {
+              "relay": {
+                "backup_http_base_url": "https://backup-relay.example.com/"
+              }
+            }
+            """;
+
+        var configuration = ExternalLinksConfigurationLoader.TryParseJson(json, "test");
+
+        Assert.NotNull(configuration);
+        Assert.NotNull(configuration!.BackupRelayHttpBaseUri);
+        Assert.NotNull(configuration.BackupRelayWebSocketUri);
+        Assert.Equal("https://backup-relay.example.com/", configuration.BackupRelayHttpBaseUri!.AbsoluteUri);
+        Assert.Equal("wss://backup-relay.example.com/ws", configuration.BackupRelayWebSocketUri!.AbsoluteUri);
     }
 
     [Fact]
