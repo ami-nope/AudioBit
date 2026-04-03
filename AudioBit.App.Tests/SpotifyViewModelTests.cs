@@ -95,6 +95,109 @@ public sealed class SpotifyViewModelTests
     }
 
     [StaFact]
+    public void KeepsPlayingStateWhenSpotifyReportsPlaybackWithoutTrackMetadata()
+    {
+        using var service = new FakeSpotifyService();
+        using var viewModel = new SpotifyViewModel(service, "0123456789abcdef0123456789abcdef", Dispatcher.CurrentDispatcher);
+
+        service.Publish(SpotifyPlaybackSnapshot.Create(
+            SpotifyConnectionState.Playing,
+            isAuthenticated: true,
+            hasActiveDevice: true,
+            canControlPlayback: true,
+            statusText: "Playing on Spotify"));
+
+        Assert.True(viewModel.IsPlaying);
+        Assert.False(viewModel.HasTrack);
+        Assert.Equal("Spotify", viewModel.TrackName);
+        Assert.Equal("Playing on Spotify", viewModel.ConnectionStatusText);
+        Assert.True(viewModel.PlayPauseCommand.CanExecute(null));
+    }
+
+    [StaFact]
+    public void PreservesPlaybackAcrossTransientDeviceTransferGap()
+    {
+        using var service = new FakeSpotifyService();
+        using var viewModel = new SpotifyViewModel(service, "0123456789abcdef0123456789abcdef", Dispatcher.CurrentDispatcher);
+        var playbackStartedAt = DateTimeOffset.UtcNow;
+
+        service.Publish(new SpotifyPlaybackSnapshot
+        {
+            ConnectionState = SpotifyConnectionState.Playing,
+            IsAuthenticated = true,
+            HasActiveDevice = true,
+            CanControlPlayback = true,
+            StatusText = "Playing on Spotify",
+            SnapshotUtc = playbackStartedAt,
+            Track = new SpotifyTrackModel
+            {
+                TrackId = "track-3",
+                TrackName = "Midnight City",
+                ArtistName = "M83",
+                DurationMs = 250000,
+                ProgressMs = 120000,
+                IsPlaying = true,
+            },
+        });
+
+        service.Publish(new SpotifyPlaybackSnapshot
+        {
+            ConnectionState = SpotifyConnectionState.NoActiveDevice,
+            IsAuthenticated = true,
+            HasActiveDevice = false,
+            CanControlPlayback = false,
+            StatusText = "Open Spotify on a device",
+            SnapshotUtc = playbackStartedAt.AddSeconds(1),
+        });
+
+        Assert.True(viewModel.HasTrack);
+        Assert.True(viewModel.IsPlaying);
+        Assert.Equal("Midnight City", viewModel.TrackName);
+        Assert.True(viewModel.ShowProgressBar);
+    }
+
+    [StaFact]
+    public void ClearsPlaybackAfterTransferGapGracePeriodExpires()
+    {
+        using var service = new FakeSpotifyService();
+        using var viewModel = new SpotifyViewModel(service, "0123456789abcdef0123456789abcdef", Dispatcher.CurrentDispatcher);
+        var playbackStartedAt = DateTimeOffset.UtcNow;
+
+        service.Publish(new SpotifyPlaybackSnapshot
+        {
+            ConnectionState = SpotifyConnectionState.Playing,
+            IsAuthenticated = true,
+            HasActiveDevice = true,
+            CanControlPlayback = true,
+            StatusText = "Playing on Spotify",
+            SnapshotUtc = playbackStartedAt,
+            Track = new SpotifyTrackModel
+            {
+                TrackId = "track-4",
+                TrackName = "Teardrop",
+                ArtistName = "Massive Attack",
+                DurationMs = 300000,
+                ProgressMs = 90000,
+                IsPlaying = true,
+            },
+        });
+
+        service.Publish(new SpotifyPlaybackSnapshot
+        {
+            ConnectionState = SpotifyConnectionState.NoActiveDevice,
+            IsAuthenticated = true,
+            HasActiveDevice = false,
+            CanControlPlayback = false,
+            StatusText = "Open Spotify on a device",
+            SnapshotUtc = playbackStartedAt.AddSeconds(5),
+        });
+
+        Assert.False(viewModel.HasTrack);
+        Assert.False(viewModel.IsPlaying);
+        Assert.Equal("Spotify", viewModel.TrackName);
+    }
+
+    [StaFact]
     public void DisablesConnectWhenSpotifyClientIdIsMissing()
     {
         using var service = new FakeSpotifyService();

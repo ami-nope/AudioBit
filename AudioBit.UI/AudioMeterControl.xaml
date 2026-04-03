@@ -221,6 +221,14 @@
                        TextTrimming="CharacterEllipsis" />
         </DataTemplate>
 
+        <DataTemplate x:Key="RouteSelectedDeviceTemplate">
+            <TextBlock FontSize="10.5"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       LineHeight="12"
+                       Text="{Binding CompactDisplayName}"
+                       TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+
         <Style x:Key="RouteLabelStyle" TargetType="{x:Type TextBlock}">
             <Setter Property="Margin" Value="4,0,0,0" />
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -309,9 +317,8 @@
                                     <ContentPresenter Margin="{TemplateBinding Padding}"
                                                       VerticalAlignment="Center"
                                                       HorizontalAlignment="Stretch"
-                                                      Content="{TemplateBinding SelectionBoxItem}"
-                                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                                      ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                                      Content="{Binding SelectedItem, RelativeSource={RelativeSource TemplatedParent}}"
+                                                      ContentTemplate="{StaticResource RouteSelectedDeviceTemplate}"
                                                       IsHitTestVisible="False" />
 
                                     <Path x:Name="Arrow"

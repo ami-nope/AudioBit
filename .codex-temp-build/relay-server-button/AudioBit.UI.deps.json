@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "AudioBit.UI/0.0.0-local": {
+        "runtime": {
+          "AudioBit.UI.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "AudioBit.UI/0.0.0-local": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

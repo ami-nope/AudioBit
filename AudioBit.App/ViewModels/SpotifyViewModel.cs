@@ -13,6 +13,7 @@ namespace AudioBit.App.ViewModels;
 public sealed class SpotifyViewModel : ObservableObject, IDisposable
 {
     private static readonly TimeSpan ProgressTickInterval = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan PlaybackTransferGracePeriod = TimeSpan.FromSeconds(3);
 
     private readonly ISpotifyService _spotifyService;
     private readonly Dispatcher _dispatcher;
@@ -25,6 +26,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
     private bool _isPlaying;
     private bool _hasTrack;
     private bool _hasActiveDevice;
+    private bool _hasLocalAudioActivity;
     private bool _canControlPlayback;
     private string _trackName = "Spotify";
     private string _artistName = "Spotify not connected";
@@ -37,6 +39,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
     private int _progressBaseMs;
     private int _trackDurationMs;
     private DateTimeOffset _progressBaseUtc = DateTimeOffset.UtcNow;
+    private DateTimeOffset _lastPlaybackActivityUtc = DateTimeOffset.MinValue;
 
     public SpotifyViewModel(ISpotifyService spotifyService, string clientId, Dispatcher? dispatcher = null)
     {
@@ -122,6 +125,12 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
     {
         get => _hasActiveDevice;
         private set => SetProperty(ref _hasActiveDevice, value);
+    }
+
+    public bool HasLocalAudioActivity
+    {
+        get => _hasLocalAudioActivity;
+        private set => SetProperty(ref _hasLocalAudioActivity, value);
     }
 
     public bool CanControlPlayback
@@ -222,14 +231,14 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
     public void Stop()
     {
         _progressTimer.Stop();
-        UpdateLivePeak(0.0);
+        UpdateLocalAudioState(0.0, false);
         _ = _spotifyService.StopPollingAsync();
     }
 
     public void OnHiddenToTray()
     {
         _progressTimer.Stop();
-        UpdateLivePeak(0.0);
+        UpdateLocalAudioState(0.0, false);
         _ = _spotifyService.StopPollingAsync();
     }
 
@@ -257,14 +266,26 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
 
     public void UpdateLivePeak(double peak)
     {
+        UpdateLocalAudioState(peak, HasLocalAudioActivity);
+    }
+
+    public void UpdateLocalAudioState(double peak, bool hasLocalAudioActivity)
+    {
         var clamped = Math.Clamp(peak, 0.0, 1.0);
         if (_dispatcher.CheckAccess())
         {
             LivePeak = clamped;
+            HasLocalAudioActivity = hasLocalAudioActivity;
             return;
         }
 
-        _dispatcher.BeginInvoke(DispatcherPriority.DataBind, new Action(() => LivePeak = clamped));
+        _dispatcher.BeginInvoke(
+            DispatcherPriority.DataBind,
+            new Action(() =>
+            {
+                LivePeak = clamped;
+                HasLocalAudioActivity = hasLocalAudioActivity;
+            }));
     }
 
     private async Task InitializeAsync(CancellationToken cancellationToken)
@@ -351,6 +372,14 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
 
     private void ApplySnapshot(SpotifyPlaybackSnapshot snapshot)
     {
+        var isPlaybackActive = snapshot.ConnectionState == SpotifyConnectionState.Playing
+            || snapshot.Track?.IsPlaying == true;
+
+        if (isPlaybackActive)
+        {
+            _lastPlaybackActivityUtc = snapshot.SnapshotUtc;
+        }
+
         IsAuthenticated = snapshot.IsAuthenticated;
         HasActiveDevice = snapshot.HasActiveDevice;
         CanControlPlayback = snapshot.CanControlPlayback;
@@ -359,8 +388,26 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
 
         if (snapshot.Track is null)
         {
+            if (ShouldPreservePlaybackAcrossDeviceTransfer(snapshot, isPlaybackActive))
+            {
+                HasTrack = true;
+                IsPlaying = true;
+                UpdateProgressPercent();
+
+                if (ShowProgressBar)
+                {
+                    _progressTimer.Start();
+                }
+                else
+                {
+                    _progressTimer.Stop();
+                }
+
+                return;
+            }
+
             HasTrack = false;
-            IsPlaying = false;
+            IsPlaying = isPlaybackActive;
             TrackName = "Spotify";
             ArtistName = snapshot.StatusText;
             AlbumArt = null;
@@ -374,7 +421,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
         }
 
         HasTrack = true;
-        IsPlaying = snapshot.Track.IsPlaying;
+        IsPlaying = isPlaybackActive;
         TrackName = string.IsNullOrWhiteSpace(snapshot.Track.TrackName) ? "Unknown track" : snapshot.Track.TrackName;
         ArtistName = string.IsNullOrWhiteSpace(snapshot.Track.ArtistName) ? "Unknown artist" : snapshot.Track.ArtistName;
         AlbumArt = snapshot.Track.AlbumArt;
@@ -392,6 +439,38 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
         {
             _progressTimer.Stop();
         }
+    }
+
+    private bool ShouldPreservePlaybackAcrossDeviceTransfer(SpotifyPlaybackSnapshot snapshot, bool isPlaybackActive)
+    {
+        if (!HasTrack
+            || snapshot.Track is not null
+            || !snapshot.IsAuthenticated)
+        {
+            return false;
+        }
+
+        if (snapshot.ConnectionState == SpotifyConnectionState.Disconnected
+            || snapshot.ConnectionState == SpotifyConnectionState.AuthExpired
+            || snapshot.ConnectionState == SpotifyConnectionState.RateLimited
+            || snapshot.ConnectionState == SpotifyConnectionState.Paused)
+        {
+            return false;
+        }
+
+        var recentlyActive = isPlaybackActive
+            || IsPlaying
+            || (_lastPlaybackActivityUtc != DateTimeOffset.MinValue
+                && snapshot.SnapshotUtc - _lastPlaybackActivityUtc <= PlaybackTransferGracePeriod);
+        if (!recentlyActive)
+        {
+            return false;
+        }
+
+        return snapshot.ConnectionState == SpotifyConnectionState.Playing
+            || snapshot.ConnectionState == SpotifyConnectionState.ConnectedIdle
+            || snapshot.ConnectionState == SpotifyConnectionState.NoActiveDevice
+            || snapshot.ConnectionState == SpotifyConnectionState.Error;
     }
 
     private void ProgressTimerOnTick(object? sender, EventArgs e)

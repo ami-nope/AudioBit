@@ -10,11 +10,11 @@
         <Style x:Key="SpotifyControlButtonStyle" TargetType="{x:Type Button}">
             <Setter Property="Width" Value="32" />
             <Setter Property="Height" Value="32" />
-            <Setter Property="Background" Value="#1CFFFFFF" />
+            <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="#00000000" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource SpotifyWidgetIconBrush}" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -29,7 +29,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#261DB954" />
+                                <Setter TargetName="RootBorder" Property="Background" Value="Transparent" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="RootBorder" Property="Opacity" Value="0.82" />
@@ -44,30 +44,27 @@
         </Style>
 
         <Style x:Key="SpotifyPrimaryControlButtonStyle" TargetType="{x:Type Button}">
-            <Setter Property="Width" Value="30" />
-            <Setter Property="Height" Value="30" />
-            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="#FFFFFFFF" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="#121212" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
-                        <Grid x:Name="Root"
-                              RenderTransformOrigin="0.5,0.5"
-                              Opacity="0.92"
-                              Background="{TemplateBinding Background}">
-                            <Grid.RenderTransform>
-                                <ScaleTransform ScaleX="1"
-                                                ScaleY="1" />
-                            </Grid.RenderTransform>
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="999"
+                                Opacity="1">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
-                        </Grid>
+                        </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Opacity" Value="1" />
+                                <Setter TargetName="Root" Property="Background" Value="#F2F2F2" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Root" Property="Opacity" Value="0.82" />
@@ -88,6 +85,8 @@
               Width="48"
               Height="136"
               Background="Transparent"
+              MouseEnter="TabHitArea_OnMouseEnter"
+              MouseLeave="TabHitArea_OnMouseLeave"
               PreviewMouseLeftButtonUp="TabHitArea_OnPreviewMouseLeftButtonUp">
             <Border x:Name="TabGlow"
                     Margin="-2"
@@ -106,20 +105,12 @@
                 <Grid>
                     <Border Height="30"
                             VerticalAlignment="Top"
-                            CornerRadius="18,18,10,10">
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0,0"
-                                                 EndPoint="0,1">
-                                <GradientStop Offset="0"
-                                              Color="#22FFFFFF" />
-                                <GradientStop Offset="1"
-                                              Color="#00FFFFFF" />
-                            </LinearGradientBrush>
-                        </Border.Background>
-                    </Border>
+                            CornerRadius="18,18,10,10"
+                            Background="{DynamicResource SpotifyWidgetGlassBrush}" />
 
                     <Grid Margin="8,10,8,12">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
@@ -134,7 +125,7 @@
                                     <Style TargetType="{x:Type Image}">
                                         <Setter Property="Visibility" Value="Visible" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                            <DataTrigger Binding="{Binding HasTrack}" Value="True">
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -149,7 +140,7 @@
                                     <Style TargetType="{x:Type Border}">
                                         <Setter Property="Visibility" Value="Collapsed" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                            <DataTrigger Binding="{Binding HasTrack}" Value="True">
                                                 <Setter Property="Visibility" Value="Visible" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -160,8 +151,33 @@
                             </Border>
                         </Grid>
 
-                        <Grid Grid.Row="1"
-                              Margin="0,10,0,10"
+                        <ProgressBar Grid.Row="1"
+                                     Height="3"
+                                     Margin="2,6,2,4"
+                                     Maximum="100"
+                                     Value="{Binding ProgressPercent, Mode=OneWay}"
+                                     Background="#42FFFFFF"
+                                     Foreground="#FFFFFFFF"
+                                     BorderThickness="0"
+                                     IsHitTestVisible="False"
+                                     Visibility="{Binding ShowProgressBar, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ProgressBar.Template>
+                                <ControlTemplate TargetType="{x:Type ProgressBar}">
+                                    <Grid>
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="2" />
+                                        <Border Name="PART_Indicator"
+                                                HorizontalAlignment="Left"
+                                                Background="{TemplateBinding Foreground}"
+                                                CornerRadius="2" />
+                                        <Border Name="PART_Track" />
+                                    </Grid>
+                                </ControlTemplate>
+                            </ProgressBar.Template>
+                        </ProgressBar>
+
+                        <Grid Grid.Row="2"
+                              Margin="0,6,0,8"
                               Height="34"
                               VerticalAlignment="Center"
                               IsHitTestVisible="False">
@@ -170,51 +186,52 @@
                                          HorizontalAlignment="Stretch"
                                          VerticalAlignment="Bottom">
                                 <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#12E37D" /><GradientStop Offset="1" Color="#58F4A5" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar1Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                                 <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#20E7AA" /><GradientStop Offset="1" Color="#61FFF3" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar2Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                                 <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#2FD0FF" /><GradientStop Offset="1" Color="#7E9CFF" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar3Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                                 <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#6F7DFF" /><GradientStop Offset="1" Color="#C06AFF" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar4Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                                 <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#B14BFF" /><GradientStop Offset="1" Color="#FF60D8" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar5Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                                 <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#FF5EBB" /><GradientStop Offset="1" Color="#FF7B8A" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar6Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                                 <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#FF7F63" /><GradientStop Offset="1" Color="#FFB25B" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar7Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                                 <Border Height="24" Margin="0,0,1,0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#F7B948" /><GradientStop Offset="1" Color="#FFF171" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar8Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                                 <Border Height="24" Margin="0" CornerRadius="1.5" RenderTransformOrigin="0.5,1">
-                                    <Border.Background><LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0"><GradientStop Offset="0" Color="#C8F24A" /><GradientStop Offset="1" Color="#72FF9C" /></LinearGradientBrush></Border.Background>
+                                    <Border.Background><SolidColorBrush Color="#1DB954" /></Border.Background>
                                     <Border.RenderTransform><ScaleTransform x:Name="Bar9Scale" ScaleY="0.12" /></Border.RenderTransform>
                                 </Border>
                             </UniformGrid>
                         </Grid>
 
-                        <Button Grid.Row="2"
+                        <Button Grid.Row="3"
                                 Command="{Binding PlayPauseCommand}"
                                 Style="{StaticResource SpotifyPrimaryControlButtonStyle}">
-                            <Grid Width="18"
-                                  Height="18">
-                                <Path Fill="{DynamicResource SpotifyAccentBrush}"
-                                      Data="M4,2.1 L15.2,9 L4,15.9 Z">
+                            <Grid Width="12"
+                                  Height="12">
+                                <Path Fill="#121212"
+                                      Data="M2,1.2 L10.4,6 L2,10.8 Z"
+                                      Stretch="Fill">
                                     <Path.Style>
                                         <Style TargetType="{x:Type Path}">
                                             <Setter Property="Visibility" Value="Visible" />
@@ -226,7 +243,7 @@
                                         </Style>
                                     </Path.Style>
                                 </Path>
-                                <Grid Width="11" Height="13">
+                                <Grid Width="10" Height="12">
                                     <Grid.Style>
                                         <Style TargetType="{x:Type Grid}">
                                             <Setter Property="Visibility" Value="Collapsed" />
@@ -237,8 +254,8 @@
                                             </Style.Triggers>
                                         </Style>
                                     </Grid.Style>
-                                    <Rectangle Width="3.6" Height="13" HorizontalAlignment="Left" RadiusX="1" RadiusY="1" Fill="{DynamicResource SpotifyAccentBrush}" />
-                                    <Rectangle Width="3.6" Height="13" HorizontalAlignment="Right" RadiusX="1" RadiusY="1" Fill="{DynamicResource SpotifyAccentBrush}" />
+                                    <Rectangle Width="3" Height="12" HorizontalAlignment="Left" RadiusX="0.5" RadiusY="0.5" Fill="#121212" />
+                                    <Rectangle Width="3" Height="12" HorizontalAlignment="Right" RadiusX="0.5" RadiusY="0.5" Fill="#121212" />
                                 </Grid>
                             </Grid>
                         </Button>
@@ -255,7 +272,7 @@
                Placement="Right"
                PlacementTarget="{Binding ElementName=TabHitArea}"
                PopupAnimation="None"
-               StaysOpen="False"
+               StaysOpen="True"
                Closed="WidgetPopup_OnClosed">
             <Border Width="280"
                     Height="136"
@@ -268,6 +285,8 @@
                         BorderThickness="0"
                         CornerRadius="20"
                         HorizontalAlignment="Left"
+                        MouseEnter="ExpandedPanel_OnMouseEnter"
+                        MouseLeave="ExpandedPanel_OnMouseLeave"
                         PreviewMouseLeftButtonDown="ExpandedPanel_OnPreviewMouseLeftButtonDown">
                     <Border.RenderTransform>
                         <TranslateTransform x:Name="ExpandedPanelShift"
@@ -277,17 +296,8 @@
                     <Grid Width="280" Height="136">
                         <Border Height="34"
                                 VerticalAlignment="Top"
-                                CornerRadius="20,20,0,0">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0"
-                                                     EndPoint="0,1">
-                                    <GradientStop Offset="0"
-                                                  Color="#1EFFFFFF" />
-                                    <GradientStop Offset="1"
-                                                  Color="#00FFFFFF" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
+                                CornerRadius="20,20,0,0"
+                                Background="{DynamicResource SpotifyWidgetGlassBrush}" />
 
                         <Grid Margin="12">
                             <Grid.ColumnDefinitions>
@@ -301,11 +311,11 @@
                                 <Grid.Effect>
                                     <DropShadowEffect BlurRadius="16" ShadowDepth="6" Direction="270" Opacity="0.45" Color="Black" />
                                 </Grid.Effect>
-                                <Border Background="{DynamicResource OverlayOptionBrush}"
+                                <Border Background="{DynamicResource SpotifyWidgetGlassBrush}"
                                         CornerRadius="12"
                                         ClipToBounds="True">
                                     <Grid>
-                                        <Border Background="{DynamicResource OverlayOptionBrush}" />
+                                        <Border Background="{DynamicResource SpotifyWidgetGlassBrush}" />
                                         <Image Source="{Binding AlbumArt}"
                                                Stretch="UniformToFill" />
                                         <Image Width="32"
@@ -328,7 +338,7 @@
                                     </Grid>
                                 </Border>
                                 <!-- Glossy rim overlay -->
-                                <Border CornerRadius="12" BorderBrush="#22FFFFFF" BorderThickness="1" />
+                                <Border CornerRadius="12" BorderBrush="#FF121212" BorderThickness="1" />
                             </Grid>
 
                             <Grid Grid.Column="1" Margin="14,2,2,2">
@@ -343,7 +353,7 @@
                                 <StackPanel Grid.Row="1" VerticalAlignment="Center">
                                     <TextBlock FontSize="14"
                                                FontWeight="Bold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Foreground="{DynamicResource SpotifyWidgetIconBrush}"
                                                Text="{Binding TrackName}"
                                                TextTrimming="CharacterEllipsis"
                                                ToolTip="{Binding TrackName}" />
@@ -402,14 +412,10 @@
                                             Margin="14,0"
                                             Command="{Binding PlayPauseCommand}"
                                             Style="{StaticResource SpotifyPrimaryControlButtonStyle}">
-                                        <Grid Width="30" Height="30">
-                                            <Ellipse Fill="{DynamicResource SpotifyAccentBrush}" />
-                                            
+                                        <Grid Width="12" Height="12">
                                             <Path Fill="#121212"
-                                                  Data="M4,2.1 L15.2,9 L4,15.9 Z" 
-                                                  HorizontalAlignment="Center" 
-                                                  VerticalAlignment="Center" 
-                                                  Margin="2,0,0,0">
+                                                  Data="M2,1.2 L10.4,6 L2,10.8 Z"
+                                                  Stretch="Fill">
                                                 <Path.Style>
                                                     <Style TargetType="{x:Type Path}">
                                                         <Setter Property="Visibility" Value="Visible" />
@@ -421,8 +427,8 @@
                                                     </Style>
                                                 </Path.Style>
                                             </Path>
-                                            
-                                            <Grid Width="12" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+
+                                            <Grid Width="10" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <Grid.Style>
                                                     <Style TargetType="{x:Type Grid}">
                                                         <Setter Property="Visibility" Value="Collapsed" />
@@ -433,8 +439,8 @@
                                                         </Style.Triggers>
                                                     </Style>
                                                 </Grid.Style>
-                                                <Rectangle Width="4" Height="14" HorizontalAlignment="Left" Fill="#121212" RadiusX="1" RadiusY="1" />
-                                                <Rectangle Width="4" Height="14" HorizontalAlignment="Right" Fill="#121212" RadiusX="1" RadiusY="1" />
+                                                <Rectangle Width="3" Height="12" HorizontalAlignment="Left" Fill="#121212" RadiusX="0.5" RadiusY="0.5" />
+                                                <Rectangle Width="3" Height="12" HorizontalAlignment="Right" Fill="#121212" RadiusX="0.5" RadiusY="0.5" />
                                             </Grid>
                                         </Grid>
                                     </Button>

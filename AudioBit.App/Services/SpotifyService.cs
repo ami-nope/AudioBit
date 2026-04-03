@@ -15,6 +15,14 @@ namespace AudioBit.App.Services;
 
 public sealed class SpotifyService : ISpotifyService
 {
+    private enum TokenRefreshResult
+    {
+        NotRequired,
+        Succeeded,
+        AuthExpired,
+        TransientFailure,
+    }
+
     private const string AuthorizeEndpoint = "https://accounts.spotify.com/authorize";
     private const string TokenEndpoint = "https://accounts.spotify.com/api/token";
     private const string CurrentPlaybackEndpoint = "https://api.spotify.com/v1/me/player/currently-playing";
@@ -209,9 +217,15 @@ public sealed class SpotifyService : ISpotifyService
 
         if (IsTokenExpiring(storedState))
         {
-            var refreshed = await TryRefreshAccessTokenAsync(cancellationToken).ConfigureAwait(false);
-            if (!refreshed)
+            var refreshResult = await TryRefreshAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+            if (refreshResult == TokenRefreshResult.AuthExpired)
             {
+                return;
+            }
+
+            if (refreshResult == TokenRefreshResult.TransientFailure)
+            {
+                PublishTemporaryUnavailableSnapshot();
                 return;
             }
         }
@@ -430,6 +444,11 @@ public sealed class SpotifyService : ISpotifyService
 
     public async Task StopPollingAsync()
     {
+        await StopPollingAsync(awaitPollingTask: true).ConfigureAwait(false);
+    }
+
+    private async Task StopPollingAsync(bool awaitPollingTask)
+    {
         CancellationTokenSource? pollingCts;
         Task? pollingTask;
 
@@ -454,7 +473,7 @@ public sealed class SpotifyService : ISpotifyService
         try
         {
             pollingCts.Cancel();
-            if (pollingTask is not null)
+            if (awaitPollingTask && pollingTask is not null)
             {
                 await pollingTask.ConfigureAwait(false);
             }
@@ -494,10 +513,10 @@ public sealed class SpotifyService : ISpotifyService
     {
         var deviceName = TryGetNestedString(root, "device", "name");
         var hasDeviceNode = root.TryGetProperty("device", out var deviceElement) && deviceElement.ValueKind == JsonValueKind.Object;
+        var isPlaying = TryGetBoolean(root, "is_playing");
 
         if (TryGetProperty(root, "item", out var itemElement) && itemElement.ValueKind == JsonValueKind.Object)
         {
-            var isPlaying = TryGetBoolean(root, "is_playing");
             var track = new SpotifyTrackModel
             {
                 TrackId = TryGetString(itemElement, "id") ?? string.Empty,
@@ -523,11 +542,11 @@ public sealed class SpotifyService : ISpotifyService
         if (hasDeviceNode)
         {
             return SpotifyPlaybackSnapshot.Create(
-                SpotifyConnectionState.ConnectedIdle,
+                isPlaying ? SpotifyConnectionState.Playing : SpotifyConnectionState.ConnectedIdle,
                 isAuthenticated: true,
                 hasActiveDevice: true,
                 canControlPlayback: true,
-                statusText: "Nothing playing",
+                statusText: isPlaying ? "Playing on Spotify" : "Nothing playing",
                 deviceName: deviceName);
         }
 
@@ -582,14 +601,15 @@ public sealed class SpotifyService : ISpotifyService
                 return;
             }
 
+            if (IsTransientSpotifyFailure(response.StatusCode))
+            {
+                PublishTemporaryUnavailableSnapshot();
+                return;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
-                PublishSnapshot(SpotifyPlaybackSnapshot.Create(
-                    SpotifyConnectionState.Error,
-                    isAuthenticated: true,
-                    hasActiveDevice: CurrentSnapshot.HasActiveDevice,
-                    canControlPlayback: CurrentSnapshot.CanControlPlayback,
-                    statusText: "Spotify unavailable"));
+                PublishTemporaryUnavailableSnapshot();
                 return;
             }
 
@@ -609,14 +629,7 @@ public sealed class SpotifyService : ISpotifyService
         catch (Exception ex)
         {
             Log($"Spotify polling error: {ex}");
-            PublishSnapshot(SpotifyPlaybackSnapshot.Create(
-                SpotifyConnectionState.Error,
-                isAuthenticated: _tokenState is not null,
-                hasActiveDevice: CurrentSnapshot.HasActiveDevice,
-                canControlPlayback: CurrentSnapshot.CanControlPlayback,
-                statusText: "Spotify unavailable",
-                track: CurrentSnapshot.Track,
-                deviceName: CurrentSnapshot.DeviceName));
+            PublishTemporaryUnavailableSnapshot();
         }
     }
 
@@ -646,6 +659,12 @@ public sealed class SpotifyService : ISpotifyService
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             await HandleAuthenticationExpiredAsync().ConfigureAwait(false);
+            return;
+        }
+
+        if (IsTransientSpotifyFailure(response.StatusCode))
+        {
+            PublishTemporaryUnavailableSnapshot();
             return;
         }
 
@@ -711,16 +730,15 @@ public sealed class SpotifyService : ISpotifyService
                 return;
             }
 
+            if (IsTransientSpotifyFailure(response.StatusCode))
+            {
+                PublishTemporaryUnavailableSnapshot();
+                return;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
-                PublishSnapshot(SpotifyPlaybackSnapshot.Create(
-                    SpotifyConnectionState.Error,
-                    isAuthenticated: true,
-                    hasActiveDevice: CurrentSnapshot.HasActiveDevice,
-                    canControlPlayback: CurrentSnapshot.CanControlPlayback,
-                    statusText: "Spotify unavailable",
-                    track: CurrentSnapshot.Track,
-                    deviceName: CurrentSnapshot.DeviceName));
+                PublishTemporaryUnavailableSnapshot();
                 return;
             }
 
@@ -733,14 +751,7 @@ public sealed class SpotifyService : ISpotifyService
         catch (Exception ex)
         {
             Log($"Spotify player command failed: {ex}");
-            PublishSnapshot(SpotifyPlaybackSnapshot.Create(
-                SpotifyConnectionState.Error,
-                isAuthenticated: true,
-                hasActiveDevice: CurrentSnapshot.HasActiveDevice,
-                canControlPlayback: CurrentSnapshot.CanControlPlayback,
-                statusText: "Spotify unavailable",
-                track: CurrentSnapshot.Track,
-                deviceName: CurrentSnapshot.DeviceName));
+            PublishTemporaryUnavailableSnapshot();
         }
     }
 
@@ -755,7 +766,17 @@ public sealed class SpotifyService : ISpotifyService
         Func<HttpRequestMessage> requestFactory,
         CancellationToken cancellationToken)
     {
-        await EnsureAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        var ensureResult = await EnsureAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        if (ensureResult == TokenRefreshResult.AuthExpired)
+        {
+            return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        }
+
+        if (ensureResult == TokenRefreshResult.TransientFailure)
+        {
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        }
+
         var accessToken = _tokenState?.AccessToken;
         if (string.IsNullOrWhiteSpace(accessToken))
         {
@@ -771,10 +792,15 @@ public sealed class SpotifyService : ISpotifyService
         }
 
         response.Dispose();
-        var refreshed = await TryRefreshAccessTokenAsync(cancellationToken).ConfigureAwait(false);
-        if (!refreshed)
+        var refreshResult = await TryRefreshAccessTokenAsync(cancellationToken, forceRefresh: true).ConfigureAwait(false);
+        if (refreshResult == TokenRefreshResult.AuthExpired)
         {
             return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        }
+
+        if (refreshResult != TokenRefreshResult.Succeeded)
+        {
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
         }
 
         using var retryRequest = requestFactory();
@@ -782,30 +808,32 @@ public sealed class SpotifyService : ISpotifyService
         return await _httpClient.SendAsync(retryRequest, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task EnsureAccessTokenAsync(CancellationToken cancellationToken)
+    private async Task<TokenRefreshResult> EnsureAccessTokenAsync(CancellationToken cancellationToken)
     {
         var tokenState = _tokenState;
         if (tokenState is null || !IsTokenExpiring(tokenState))
         {
-            return;
+            return TokenRefreshResult.NotRequired;
         }
 
-        await TryRefreshAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        return await TryRefreshAccessTokenAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<bool> TryRefreshAccessTokenAsync(CancellationToken cancellationToken)
+    private async Task<TokenRefreshResult> TryRefreshAccessTokenAsync(
+        CancellationToken cancellationToken,
+        bool forceRefresh = false)
     {
         await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_tokenState is null || _tokenState.IsEmpty || string.IsNullOrWhiteSpace(_clientId))
             {
-                return false;
+                return TokenRefreshResult.AuthExpired;
             }
 
-            if (!IsTokenExpiring(_tokenState))
+            if (!forceRefresh && !IsTokenExpiring(_tokenState))
             {
-                return true;
+                return TokenRefreshResult.NotRequired;
             }
 
             var content = new FormUrlEncodedContent(
@@ -824,8 +852,19 @@ public sealed class SpotifyService : ISpotifyService
             if (!response.IsSuccessStatusCode)
             {
                 Log($"Spotify token refresh failed with status {(int)response.StatusCode}.");
-                await HandleAuthenticationExpiredAsync().ConfigureAwait(false);
-                return false;
+                if (response.StatusCode == HttpStatusCode.BadRequest
+                    || response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    await HandleAuthenticationExpiredAsync().ConfigureAwait(false);
+                    return TokenRefreshResult.AuthExpired;
+                }
+
+                if (response.StatusCode == (HttpStatusCode)429)
+                {
+                    HandleRateLimited(response);
+                }
+
+                return TokenRefreshResult.TransientFailure;
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -835,8 +874,8 @@ public sealed class SpotifyService : ISpotifyService
             var accessToken = TryGetString(root, "access_token");
             if (string.IsNullOrWhiteSpace(accessToken))
             {
-                await HandleAuthenticationExpiredAsync().ConfigureAwait(false);
-                return false;
+                Log("Spotify token refresh response did not contain an access token.");
+                return TokenRefreshResult.TransientFailure;
             }
 
             _tokenState.AccessToken = accessToken;
@@ -844,7 +883,22 @@ public sealed class SpotifyService : ISpotifyService
             _tokenState.RefreshToken = TryGetString(root, "refresh_token") ?? _tokenState.RefreshToken;
             _tokenState.ExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, TryGetInt32(root, "expires_in")));
             _authStateStore.Save(_tokenState);
-            return true;
+            return TokenRefreshResult.Succeeded;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Log("Spotify token refresh timed out.");
+            return TokenRefreshResult.TransientFailure;
+        }
+        catch (HttpRequestException ex)
+        {
+            Log($"Spotify token refresh failed: {ex}");
+            return TokenRefreshResult.TransientFailure;
+        }
+        catch (Exception ex)
+        {
+            Log($"Spotify token refresh failed: {ex}");
+            return TokenRefreshResult.TransientFailure;
         }
         finally
         {
@@ -959,7 +1013,7 @@ public sealed class SpotifyService : ISpotifyService
 
     private async Task HandleAuthenticationExpiredAsync()
     {
-        await StopPollingAsync().ConfigureAwait(false);
+        await StopPollingAsync(awaitPollingTask: false).ConfigureAwait(false);
 
         await _stateGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
@@ -978,6 +1032,18 @@ public sealed class SpotifyService : ISpotifyService
             hasActiveDevice: false,
             canControlPlayback: false,
             statusText: "Reconnect Spotify in Settings"));
+    }
+
+    private void PublishTemporaryUnavailableSnapshot()
+    {
+        PublishSnapshot(SpotifyPlaybackSnapshot.Create(
+            SpotifyConnectionState.Error,
+            isAuthenticated: _tokenState is not null && !_tokenState.IsEmpty,
+            hasActiveDevice: CurrentSnapshot.HasActiveDevice,
+            canControlPlayback: CurrentSnapshot.CanControlPlayback,
+            statusText: "Reconnecting to Spotify...",
+            track: CurrentSnapshot.Track,
+            deviceName: CurrentSnapshot.DeviceName));
     }
 
     private void HandleRateLimited(HttpResponseMessage response)
@@ -1001,6 +1067,15 @@ public sealed class SpotifyService : ISpotifyService
     private static bool IsTokenExpiring(SpotifyTokenState tokenState)
     {
         return tokenState.ExpiresAtUtc <= DateTimeOffset.UtcNow.Add(ExpirySkew);
+    }
+
+    private static bool IsTransientSpotifyFailure(HttpStatusCode statusCode)
+    {
+        return statusCode == HttpStatusCode.RequestTimeout
+            || statusCode == HttpStatusCode.InternalServerError
+            || statusCode == HttpStatusCode.BadGateway
+            || statusCode == HttpStatusCode.ServiceUnavailable
+            || statusCode == HttpStatusCode.GatewayTimeout;
     }
 
     private static string BuildAuthorizeUrl(string clientId, string codeChallenge, string state)

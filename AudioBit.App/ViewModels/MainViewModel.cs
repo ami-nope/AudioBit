@@ -1586,7 +1586,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             StatusText = "Audio session monitoring is temporarily unavailable.";
             HasPlaybackDevice = false;
             CurrentDeviceName = "No playback device";
-            Spotify.UpdateLivePeak(0.0);
+            Spotify.UpdateLocalAudioState(0.0, false);
 
             _isApplyingDeviceSnapshot = true;
             try
@@ -1798,6 +1798,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private void UpdateSpotifyLivePeak(IReadOnlyList<AppAudioModel> models)
     {
         double peak = 0.0;
+        bool hasLocalAudioActivity = false;
         for (var index = 0; index < models.Count; index++)
         {
             var model = models[index];
@@ -1807,9 +1808,10 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             peak = Math.Max(peak, model.AudiblePeak);
+            hasLocalAudioActivity |= model.IsActive;
         }
 
-        Spotify.UpdateLivePeak(peak);
+        Spotify.UpdateLocalAudioState(peak, hasLocalAudioActivity);
     }
 
     private static bool IsSpotifySession(AppAudioModel model)

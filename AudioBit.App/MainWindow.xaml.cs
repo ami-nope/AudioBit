@@ -135,6 +135,14 @@ public partial class MainWindow : Window
 
     private void MainWindowOnDeactivated(object? sender, EventArgs e)
     {
+        if (SpotifyWidget is not null
+            && SpotifyWidget.IsExpanded
+            && Mouse.DirectlyOver is DependencyObject source
+            && SpotifyWidget.ContainsElement(source))
+        {
+            return;
+        }
+
         SpotifyWidget?.Collapse();
     }
 
@@ -406,6 +414,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.PropertyName == nameof(MainViewModel.SpotifyWidgetEnabled))
+        {
+            if (!_viewModel.SpotifyWidgetEnabled)
+            {
+                SpotifyWidget?.Collapse();
+            }
+
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Loaded,
+                new Action(() =>
+                {
+                    ApplyRoundedWindowRegion();
+                    ApplyRoundedVisualClips();
+                }));
+            return;
+        }
+
         if (e.PropertyName == nameof(MainViewModel.IsLowPerformanceMode))
         {
             ApplyLowPerformanceVisualState();
@@ -663,12 +688,12 @@ public partial class MainWindow : Window
             SetBrush("ContextMenuHoverBrush", Solid("#333648"));
             SetBrush("ScrollThumbBrush", Solid("#66697C"));
             SetBrush("ScrollThumbHoverBrush", Solid("#81859B"));
-            SetBrush("SpotifyWidgetGlassBrush", Gradient("#B2252934", "#C11A1F29"));
-            SetBrush("SpotifyWidgetGlassHoverBrush", Gradient("#C12A303B", "#CF1F2430"));
-            SetBrush("SpotifyWidgetBorderBrush", Solid("#4E5368"));
-            SetBrush("SpotifyWidgetGlowBrush", Solid("#661DB954"));
+            SetBrush("SpotifyWidgetGlassBrush", Solid("#121212"));
+            SetBrush("SpotifyWidgetGlassHoverBrush", Solid("#121212"));
+            SetBrush("SpotifyWidgetBorderBrush", Solid("#121212"));
+            SetBrush("SpotifyWidgetGlowBrush", Solid("#00000000"));
             SetBrush("SpotifyWidgetProgressBrush", Solid("#1DB954"));
-            SetBrush("SpotifyWidgetMutedTextBrush", Solid("#A2A7B6"));
+            SetBrush("SpotifyWidgetMutedTextBrush", Solid("#B3B3B3"));
             SetBrush("SpotifyWidgetIconBrush", Solid("#FFFFFF"));
             return;
         }
@@ -724,12 +749,12 @@ public partial class MainWindow : Window
         SetBrush("ContextMenuHoverBrush", Solid("#F1EEF4"));
         SetBrush("ScrollThumbBrush", Solid("#C9C3CE"));
         SetBrush("ScrollThumbHoverBrush", Solid("#B3ADB8"));
-        SetBrush("SpotifyWidgetGlassBrush", Gradient("#E8FFFFFF", "#D7F3F0F6"));
-        SetBrush("SpotifyWidgetGlassHoverBrush", Gradient("#F2FFFFFF", "#E5F6F3F8"));
-        SetBrush("SpotifyWidgetBorderBrush", Solid("#D7DDE6"));
-        SetBrush("SpotifyWidgetGlowBrush", Solid("#551DB954"));
+        SetBrush("SpotifyWidgetGlassBrush", Solid("#121212"));
+        SetBrush("SpotifyWidgetGlassHoverBrush", Solid("#121212"));
+        SetBrush("SpotifyWidgetBorderBrush", Solid("#121212"));
+        SetBrush("SpotifyWidgetGlowBrush", Solid("#00000000"));
         SetBrush("SpotifyWidgetProgressBrush", Solid("#1DB954"));
-        SetBrush("SpotifyWidgetMutedTextBrush", Solid("#6B7080"));
+        SetBrush("SpotifyWidgetMutedTextBrush", Solid("#B3B3B3"));
         SetBrush("SpotifyWidgetIconBrush", Solid("#FFFFFF"));
     }
 
@@ -961,7 +986,11 @@ public partial class MainWindow : Window
 
     private IntPtr CreateSpotifyWidgetRegion(DpiScale dpi)
     {
-        if (SpotifyWidget is null || SpotifyWidget.ActualWidth <= 0 || SpotifyWidget.ActualHeight <= 0)
+        if (SpotifyWidget is null
+            || SpotifyWidget.Visibility != Visibility.Visible
+            || !SpotifyWidget.IsVisible
+            || SpotifyWidget.ActualWidth <= 0
+            || SpotifyWidget.ActualHeight <= 0)
         {
             return IntPtr.Zero;
         }

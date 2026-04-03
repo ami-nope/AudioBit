@@ -19,18 +19,26 @@ public partial class SpotifyWidgetControl : UserControl
     private const double CollapsedPanelShift = 30;
 
     private static readonly TimeSpan VisualizerFrameInterval = TimeSpan.FromMilliseconds(16);
-    private const double PeakAttackPerSecond = 14.0;
-    private const double PeakReleasePerSecond = 5.4;
-    private const double PulseReleasePerSecond = 2.8;
-    private const double BarAttackPerSecond = 26.0;
-    private const double BarReleasePerSecond = 11.5;
+    private const double PeakAttackPerSecond = 11.4;
+    private const double PeakReleasePerSecond = 4.8;
+    private const double PulseReleasePerSecond = 2.3;
+    private const double AmbientAttackPerSecond = 1.6;
+    private const double AmbientReleasePerSecond = 0.9;
+    private const double BarAttackPerSecond = 19.5;
+    private const double BarReleasePerSecond = 9.4;
     private const double DynamicBarThreshold = 0.0015;
     private const double StopThreshold = 0.0012;
-    private const double InputNoiseFloor = 0.003;
-    private const double InputSensitivityExponent = 0.60;
-    private const double InputSensitivityGain = 1.18;
-    private const double InputSensitivityBlend = 0.24;
-    private const double PeakPulseRiseThreshold = 0.008;
+    private const double InputNoiseFloor = 0.006;
+    private const double InputSensitivityExponent = 0.74;
+    private const double InputSensitivityGain = 0.98;
+    private const double InputSensitivityBlend = 0.16;
+    private const double PeakPulseRiseThreshold = 0.018;
+    private const double RemotePlaybackPeakThreshold = 0.08;
+    private const double RemotePlaybackAmbientFloor = 0.24;
+    private const double RemotePlaybackVisibleFloor = 0.10;
+    private const double RemotePlaybackSwing = 0.18;
+    private const double VisualizerBaselineConstant = 0.02;
+    private const double VisualizerAmplitudeMultiplier = 2.0;
 
     private readonly DispatcherTimer _collapseTimer;
     private readonly DispatcherTimer _visualizerTimer;
@@ -47,6 +55,7 @@ public partial class SpotifyWidgetControl : UserControl
     private double _targetPeak;
     private double _displayPeak;
     private double _peakPulse;
+    private double _ambientEnergy;
     private double _lastLivePeak;
 
     public SpotifyWidgetControl()
@@ -94,7 +103,9 @@ public partial class SpotifyWidgetControl : UserControl
 
     public bool ContainsElement(DependencyObject? source)
     {
-        return source is not null && IsDescendantOf(source, this);
+        return source is not null
+            && (IsDescendantOf(source, this)
+                || (WidgetPopup.Child is DependencyObject popupChild && IsDescendantOf(source, popupChild)));
     }
 
     private void TabHitArea_OnMouseEnter(object sender, MouseEventArgs e)
@@ -182,7 +193,7 @@ public partial class SpotifyWidgetControl : UserControl
 
     private void BeginExpand()
     {
-        if (_isAnimating && WidgetPopup.IsOpen)
+        if (WidgetPopup.IsOpen)
         {
             return;
         }
@@ -386,9 +397,11 @@ public partial class SpotifyWidgetControl : UserControl
     private void DataContextNotifierOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SpotifyViewModel.IsPlaying)
+            || e.PropertyName == nameof(SpotifyViewModel.HasTrack)
+            || e.PropertyName == nameof(SpotifyViewModel.HasLocalAudioActivity)
             || e.PropertyName == nameof(SpotifyViewModel.LivePeak))
         {
-            UpdatePeakSignal(IsSpotifyPlaying() ? GetSpotifyLivePeak() : 0.0);
+            UpdatePeakSignal(ShouldAnimateSpotifyVisualizer() ? GetSpotifyLivePeak() : 0.0);
             RefreshVisualizerState(forceReset: e.PropertyName == nameof(SpotifyViewModel.IsPlaying));
         }
     }
@@ -406,10 +419,11 @@ public partial class SpotifyWidgetControl : UserControl
         AdvanceSpectrum(frameSeconds);
         RenderBars();
 
-        if (!IsSpotifyPlaying()
+        if (!ShouldAnimateSpotifyVisualizer()
             && _targetPeak <= StopThreshold
             && _displayPeak <= StopThreshold
             && _peakPulse <= StopThreshold
+            && _ambientEnergy <= StopThreshold
             && !_hasDynamicBarEnergy)
         {
             _visualizerTimer.Stop();
@@ -424,10 +438,11 @@ public partial class SpotifyWidgetControl : UserControl
             _lastVisualizerTickUtc = DateTimeOffset.MinValue;
         }
 
-        if (IsSpotifyPlaying()
+        if (ShouldAnimateSpotifyVisualizer()
             || _targetPeak > StopThreshold
             || _displayPeak > StopThreshold
             || _peakPulse > StopThreshold
+            || _ambientEnergy > StopThreshold
             || _hasDynamicBarEnergy)
         {
             if (!_visualizerTimer.IsEnabled)
@@ -448,15 +463,16 @@ public partial class SpotifyWidgetControl : UserControl
     {
         var clampedPeak = Math.Clamp(peak, 0.0, 1.0);
         var energizedPeak = ShapePeakSignal(clampedPeak);
-        var rise = Math.Max(0.0, energizedPeak - _lastLivePeak);
+        var softenedPeak = (energizedPeak * 0.68) + (_lastLivePeak * 0.32);
+        var rise = Math.Max(0.0, softenedPeak - _lastLivePeak);
         if (rise > PeakPulseRiseThreshold)
         {
-            var transient = Math.Clamp((rise * 4.8) + (energizedPeak * 0.62), 0.0, 1.0);
+            var transient = Math.Clamp((rise * 3.0) + (softenedPeak * 0.34), 0.0, 0.72);
             _peakPulse = Math.Max(_peakPulse, transient);
         }
 
-        _lastLivePeak = energizedPeak;
-        _targetPeak = energizedPeak;
+        _lastLivePeak = softenedPeak;
+        _targetPeak = softenedPeak;
     }
 
     private void AdvanceEnvelope(double frameSeconds)
@@ -471,13 +487,31 @@ public partial class SpotifyWidgetControl : UserControl
         }
 
         _peakPulse = MoveTowards(_peakPulse, 0.0, PulseReleasePerSecond * frameSeconds);
+
+        var remoteFallbackBlend = ShouldUseRemotePlaybackFallback() ? GetRemotePlaybackBlend(_targetPeak) : 0.0;
+        var ambientTarget = ShouldAnimateSpotifyVisualizer()
+            ? Math.Max(0.10, (_targetPeak * 0.34) + (_peakPulse * 0.12))
+            : 0.0;
+        if (remoteFallbackBlend > StopThreshold)
+        {
+            ambientTarget = Math.Max(ambientTarget, Lerp(0.10, RemotePlaybackAmbientFloor, remoteFallbackBlend));
+        }
+
+        var ambientRate = _ambientEnergy < ambientTarget
+            ? AmbientAttackPerSecond
+            : AmbientReleasePerSecond;
+        _ambientEnergy = MoveTowards(_ambientEnergy, ambientTarget, ambientRate * frameSeconds);
     }
 
     private void AdvanceSpectrum(double frameSeconds)
     {
         _spectrumTime += frameSeconds;
         _hasDynamicBarEnergy = false;
-        bool isPlaying = IsSpotifyPlaying();
+        var shouldAnimate = ShouldAnimateSpotifyVisualizer();
+        var useRemoteFallback = ShouldUseRemotePlaybackFallback();
+        var progressDrift = GetTrackProgress();
+        var measuredEnergy = Math.Clamp((_displayPeak * 0.82) + (_peakPulse * 0.46), 0.0, 1.0);
+        var remoteFallbackBlend = useRemoteFallback ? GetRemotePlaybackBlend(measuredEnergy) : 0.0;
 
         for (var index = 0; index < _visualizerBars.Length; index++)
         {
@@ -486,24 +520,29 @@ public partial class SpotifyWidgetControl : UserControl
             var baseFloor = _barFloors[index];
             var envelopeWeight = 0.55 + (_barBias[index] * 0.38) + (centerWeight * 0.22);
             var transientWeight = 0.20 + (_barBias[index] * 0.18) + (centerWeight * 0.30);
-            
-            var envelope = _displayPeak * envelopeWeight;
-            var transient = _peakPulse * transientWeight;
+            var groove = shouldAnimate
+                ? ComputePlaybackGroove(index, position, centerWeight, progressDrift, measuredEnergy, remoteFallbackBlend)
+                : 0.0;
+            var envelope = (_displayPeak * envelopeWeight * 0.68) + (groove * (0.34 + (_barBias[index] * 0.14)));
+            var transient = (_peakPulse * transientWeight * 0.56) + (groove * (measuredEnergy < 0.14 ? 0.15 : 0.07));
+            var energy = Math.Clamp((envelope * 0.88) + (transient * 0.70) + (_ambientEnergy * 0.74), 0.0, 1.0);
+            var remoteLift = remoteFallbackBlend
+                * (RemotePlaybackVisibleFloor + (centerWeight * 0.040) + (_barBias[index] * 0.028));
+            var remoteMotion = useRemoteFallback
+                ? ComputeRemotePlaybackMotion(index, position, centerWeight, progressDrift, remoteFallbackBlend)
+                : 0.0;
+            var animatedScale = remoteLift
+                + remoteMotion
+                + (envelope * 0.82)
+                + (transient * 0.58)
+                + (_ambientEnergy * (0.042 + (_barBias[index] * 0.020)))
+                + ComputeOrganicMotion(index, position, centerWeight, energy, progressDrift, remoteFallbackBlend);
+            var targetScale = baseFloor + (animatedScale * VisualizerAmplitudeMultiplier);
 
-            // Simulate baseline dancing when music is playing but no system audio is captured
-            if (isPlaying && _displayPeak < 0.1)
-            {
-                envelope = 0.15 + (Math.Sin(_spectrumTime * 3.2 + index) * 0.1) * (_barBias[index] + 0.5);
-                transient = 0.05 + (Math.Cos(_spectrumTime * 5.8 - index) * 0.05);
-            }
-
-            var energy = Math.Clamp((envelope * 1.08) + (transient * 1.16), 0.0, 1.0);
-            var targetScale = baseFloor
-                + (envelope * 1.02)
-                + (transient * 1.10)
-                + ComputeOrganicMotion(index, position, centerWeight, energy);
-
-            if (_displayPeak <= StopThreshold && _peakPulse <= StopThreshold && !isPlaying)
+            if (_displayPeak <= StopThreshold
+                && _peakPulse <= StopThreshold
+                && _ambientEnergy <= StopThreshold
+                && !shouldAnimate)
             {
                 targetScale = baseFloor;
             }
@@ -521,23 +560,84 @@ public partial class SpotifyWidgetControl : UserControl
         }
     }
 
-    private double ComputeOrganicMotion(int index, double position, double centerWeight, double energy)
+    private double ComputePlaybackGroove(
+        int index,
+        double position,
+        double centerWeight,
+        double progressDrift,
+        double measuredEnergy,
+        double remoteFallbackBlend)
+    {
+        if (_ambientEnergy <= StopThreshold)
+        {
+            return 0.0;
+        }
+
+        var phase = (_barBias[index] * 3.1)
+            + (index * 0.71)
+            + (progressDrift * Math.PI * (1.5 + centerWeight));
+        var sway = (Math.Sin((_spectrumTime * (1.55 + (_barBias[index] * 0.90))) + phase) + 1.0) * 0.5;
+        var skip = (Math.Sin((_spectrumTime * (2.45 + (centerWeight * 0.75))) - (position * Math.PI * 2.6) + (phase * 1.2)) + 1.0) * 0.5;
+        var chatter = (Math.Sin((_spectrumTime * (4.6 + (index * 0.11))) + (phase * 1.8)) + 1.0) * 0.5;
+        var selector = (Math.Sin((_spectrumTime * (0.42 + (_barBias[index] * 0.22))) + (progressDrift * Math.PI * 2.0) + phase) + 1.0) * 0.5;
+        var blend = Lerp(sway, skip, selector) * 0.70 + (chatter * 0.30);
+        var amplitude = (0.015 + (_barBias[index] * 0.010) + (centerWeight * 0.012))
+            * (0.65 + (_ambientEnergy * 1.20) + (measuredEnergy * 0.35) + (remoteFallbackBlend * 1.15));
+
+        return blend * amplitude;
+    }
+
+    private double ComputeRemotePlaybackMotion(
+        int index,
+        double position,
+        double centerWeight,
+        double progressDrift,
+        double remoteFallbackBlend)
+    {
+        if (remoteFallbackBlend <= StopThreshold)
+        {
+            return 0.0;
+        }
+
+        var phase = (_barBias[index] * 4.1)
+            + (index * 0.88)
+            + (progressDrift * Math.PI * (1.7 + position));
+        var drift = (Math.Sin((_spectrumTime * (0.95 + (centerWeight * 0.45))) + phase) + 1.0) * 0.5;
+        var hop = (Math.Sin((_spectrumTime * (2.10 + (_barBias[index] * 1.10))) - (position * Math.PI * 2.3) + (phase * 1.3)) + 1.0) * 0.5;
+        var flutter = (Math.Sin((_spectrumTime * (3.50 + (index * 0.13))) + (phase * 2.0)) + 1.0) * 0.5;
+        var selector = (Math.Sin((_spectrumTime * (0.37 + (centerWeight * 0.18))) + (phase * 0.7)) + 1.0) * 0.5;
+        var profile = (Lerp(drift, hop, selector) * 0.68) + (flutter * 0.32);
+        var amplitude = (RemotePlaybackSwing + (centerWeight * 0.08) + (_barBias[index] * 0.06))
+            * remoteFallbackBlend;
+
+        return profile * amplitude;
+    }
+
+    private double ComputeOrganicMotion(
+        int index,
+        double position,
+        double centerWeight,
+        double energy,
+        double progressDrift,
+        double remoteFallbackBlend)
     {
         if (energy <= StopThreshold)
         {
             return 0.0;
         }
 
-        var phase = (_barBias[index] * 2.4) + (index * 0.46);
-        var wave = Math.Sin((_spectrumTime * (4.4 + (centerWeight * 1.4))) - (position * Math.PI * 3.4) + phase);
-        var flutter = Math.Sin((_spectrumTime * (8.6 + (_barBias[index] * 1.7))) + (phase * 1.7));
-        var jitter = Math.Sin((_spectrumTime * (12.4 + (index * 0.15))) + (phase * 2.3));
+        var phase = (_barBias[index] * 2.4)
+            + (index * 0.46)
+            + (progressDrift * Math.PI * (0.8 + position));
+        var wave = Math.Sin((_spectrumTime * (3.8 + (centerWeight * 0.9))) - (position * Math.PI * 3.1) + phase);
+        var flutter = Math.Sin((_spectrumTime * (7.1 + (_barBias[index] * 1.2))) + (phase * 1.5));
+        var jitter = Math.Sin((_spectrumTime * (10.1 + (index * 0.09))) + (phase * 2.1));
         var blend =
-            (Math.Max(0.0, wave) * 0.56)
-            + ((flutter + 1.0) * 0.24)
-            + ((jitter + 1.0) * 0.13);
-        var amplitude = (0.024 + (centerWeight * 0.034) + (_barBias[index] * 0.018))
-            * (0.30 + (energy * 1.94));
+            (Math.Max(0.0, wave) * 0.45)
+            + ((flutter + 1.0) * 0.19)
+            + ((jitter + 1.0) * 0.10);
+        var amplitude = (0.010 + (centerWeight * 0.015) + (_barBias[index] * 0.009))
+            * (0.20 + (energy * 1.10) + (remoteFallbackBlend * 0.65));
 
         return blend * amplitude;
     }
@@ -556,12 +656,13 @@ public partial class SpotifyWidgetControl : UserControl
         _targetPeak = 0.0;
         _displayPeak = 0.0;
         _peakPulse = 0.0;
+        _ambientEnergy = 0.0;
         _lastLivePeak = 0.0;
         _hasDynamicBarEnergy = false;
 
         for (var index = 0; index < _visualizerBars.Length; index++)
         {
-            var floor = 0.06 + (_barBias[index] * 0.024);
+            var floor = 0.06 + VisualizerBaselineConstant + (_barBias[index] * 0.024);
             _barFloors[index] = floor;
             _barScales[index] = floor;
         }
@@ -588,6 +689,11 @@ public partial class SpotifyWidgetControl : UserControl
         return current + ((target - current) * blend);
     }
 
+    private static double Lerp(double from, double to, double amount)
+    {
+        return from + ((to - from) * Math.Clamp(amount, 0.0, 1.0));
+    }
+
     private static double ShapePeakSignal(double peak)
     {
         if (peak <= InputNoiseFloor)
@@ -600,13 +706,38 @@ public partial class SpotifyWidgetControl : UserControl
         return Math.Clamp((liftedPeak * InputSensitivityGain) + (normalizedPeak * InputSensitivityBlend), 0.0, 1.0);
     }
 
+    private static double GetRemotePlaybackBlend(double energy)
+    {
+        return Math.Clamp((RemotePlaybackPeakThreshold - energy) / RemotePlaybackPeakThreshold, 0.0, 1.0);
+    }
+
     private double GetSpotifyLivePeak()
     {
         return DataContext is SpotifyViewModel viewModel ? viewModel.LivePeak : 0.0;
     }
 
+    private double GetTrackProgress()
+    {
+        return DataContext is SpotifyViewModel viewModel
+            ? Math.Clamp(viewModel.ProgressPercent / 100.0, 0.0, 1.0)
+            : 0.0;
+    }
+
     private bool IsSpotifyPlaying()
     {
         return DataContext is SpotifyViewModel viewModel && viewModel.IsPlaying;
+    }
+
+    private bool ShouldUseRemotePlaybackFallback()
+    {
+        return DataContext is SpotifyViewModel viewModel
+            && viewModel.IsPlaying
+            && !viewModel.HasLocalAudioActivity;
+    }
+
+    private bool ShouldAnimateSpotifyVisualizer()
+    {
+        return DataContext is SpotifyViewModel viewModel
+            && (viewModel.IsPlaying || viewModel.HasTrack);
     }
 }
