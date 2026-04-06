@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using AudioBit.App.Infrastructure;
 using AudioBit.App.Models;
 using AudioBit.Core;
+using AudioBit.Core.Diagnostics;
 using Velopack;
 using Velopack.Sources;
 
@@ -59,6 +61,7 @@ internal sealed class AppUpdaterService : IDisposable
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        Log($"Updater initialization requested. installKind={CurrentStatus.InstallKind}");
 
         lock (_statusGate)
         {
@@ -155,7 +158,11 @@ internal sealed class AppUpdaterService : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Update check failed: {ex}");
+            Log(
+                "Update check failed.",
+                ex,
+                ("Operation", "InitializeAsync"),
+                ("InstallKind", CurrentStatus.InstallKind));
             UpdateStatus(snapshot => snapshot with
             {
                 State = AppUpdateState.Failed,
@@ -169,6 +176,7 @@ internal sealed class AppUpdaterService : IDisposable
     public void RestartNow()
     {
         ThrowIfDisposed();
+        Log("Updater restart-now flow requested.");
 
         var updateToApply = _pendingUpdate;
         if (updateToApply is null)
@@ -184,7 +192,10 @@ internal sealed class AppUpdaterService : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Failed to apply update: {ex}");
+            Log(
+                "Failed to apply update.",
+                ex,
+                ("Operation", "RestartNow"));
             UpdateStatus(snapshot => snapshot with
             {
                 State = AppUpdateState.Failed,
@@ -441,6 +452,7 @@ internal sealed class AppUpdaterService : IDisposable
 
     private void Log(string message)
     {
+        AppLogTextWriter.Write("AppUpdater", message);
         var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] [AppUpdater] {message}";
         Debug.WriteLine(logLine);
 
@@ -455,6 +467,44 @@ internal sealed class AppUpdaterService : IDisposable
         catch
         {
             // Logging must never break control flow.
+        }
+    }
+
+    private void Log(string message, Exception exception, params (string Key, object? Value)[] context)
+    {
+        AppLogTextWriter.Write(
+            "AppUpdater",
+            message,
+            exception,
+            context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+        var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] [AppUpdater] {message}";
+        Debug.WriteLine(logLine);
+
+        try
+        {
+            var details = AppLogExceptionFormatter.Format(
+                "AppUpdater",
+                message,
+                exception,
+                context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+            var entry = new System.Text.StringBuilder()
+                .Append('[').Append(DateTimeOffset.Now.ToString("O")).Append("] [AppUpdater] ").AppendLine(message);
+            using var reader = new StringReader(details);
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                entry.Append("    ").AppendLine(line);
+            }
+
+            lock (LogFileGate)
+            {
+                Directory.CreateDirectory(AudioBitPaths.LogsDirectoryPath);
+                File.AppendAllText(Path.Combine(AudioBitPaths.LogsDirectoryPath, "app-updater.log"), entry.ToString());
+            }
+        }
+        catch
+        {
+            // Logging must never block update flow.
         }
     }
 }

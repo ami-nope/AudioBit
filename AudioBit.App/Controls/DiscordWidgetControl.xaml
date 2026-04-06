@@ -1,0 +1,233 @@
+<UserControl x:Class="AudioBit.App.Controls.DiscordWidgetControl"
+             x:Name="RootControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <LinearGradientBrush x:Key="DiscordVoiceGlowBrush"
+                             StartPoint="0,0"
+                             EndPoint="1,1">
+            <GradientStop Color="#F7FBFF" Offset="0" />
+            <GradientStop Color="#DDE9FF" Offset="0.45" />
+            <GradientStop Color="#C8D6FF" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="DiscordVoiceBackBrush"
+                             StartPoint="0.15,0"
+                             EndPoint="0.85,1">
+            <GradientStop Color="#FFFFFF" Offset="0" />
+            <GradientStop Color="#D7EEFF" Offset="0.48" />
+            <GradientStop Color="#C7D2FF" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="DiscordVoiceFrontBrush"
+                             StartPoint="0,0.2"
+                             EndPoint="1,0.8">
+            <GradientStop Color="#FFFFFF" Offset="0" />
+            <GradientStop Color="#ECFBFF" Offset="0.36" />
+            <GradientStop Color="#D5E3FF" Offset="0.72" />
+            <GradientStop Color="#C9D0FF" Offset="1" />
+        </LinearGradientBrush>
+
+        <Style x:Key="DiscordPrimaryControlButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="999"
+                                Opacity="1">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#33FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#22FFFFFF" />
+                                <Setter TargetName="Root" Property="Opacity" Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Width="48"
+          Height="136">
+        <Grid x:Name="TabHitArea"
+              Width="48"
+              Height="136"
+              Background="Transparent">
+
+            <Border x:Name="TabSurface"
+                    Width="48"
+                    Height="136"
+                    Background="#5865F2"
+                    BorderThickness="0"
+                    CornerRadius="18">
+                <Grid>
+                    <Grid Margin="6,10,6,12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Margin="0,2,0,0"
+                              Width="36"
+                              Height="36">
+                            <Canvas x:Name="LogoVisualizerCanvas"
+                                    Width="36"
+                                    Height="36"
+                                    IsHitTestVisible="False">
+                                <Path x:Name="VoiceMeshGlowPath"
+                                      Fill="Transparent"
+                                      Opacity="0.14"
+                                      Stroke="{StaticResource DiscordVoiceGlowBrush}"
+                                      StrokeThickness="2.2"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round" />
+                                <Path x:Name="VoiceMeshBackPath"
+                                      Fill="Transparent"
+                                      Opacity="0.26"
+                                      Stroke="{StaticResource DiscordVoiceBackBrush}"
+                                      StrokeThickness="1.35"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round" />
+                                <Path x:Name="VoiceMeshFrontPath"
+                                      Fill="Transparent"
+                                      Opacity="0.7"
+                                      Stroke="{StaticResource DiscordVoiceFrontBrush}"
+                                      StrokeThickness="1.85"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round" />
+                            </Canvas>
+
+                            <Grid Width="28"
+                                  Height="21"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <ScaleTransform x:Name="LogoMarkScaleTransform" ScaleX="1" ScaleY="1" />
+                                </Grid.RenderTransform>
+
+                                <Viewbox x:Name="LogoMark"
+                                         Width="28"
+                                         Height="21"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center">
+                                    <Path Fill="#FFFFFF"
+                                          Data="M40.575 0C39.9562 1.09866 39.4006 2.2352 38.8954 3.397C34.0967 2.67719 29.2096 2.67719 24.3982 3.397C23.9057 2.2352 23.3374 1.09866 22.7186 0C18.2104 0.770324 13.8157 2.12155 9.64839 4.02841C1.38951 16.2652 -0.845688 28.1863 0.265599 39.9432C5.10222 43.517 10.5197 46.2447 16.2909 47.9874C17.5916 46.2447 18.7407 44.3883 19.7257 42.4562C17.8568 41.7616 16.0509 40.8903 14.3208 39.88C14.7755 39.5517 15.2175 39.2107 15.6468 38.8824C25.7873 43.6559 37.5316 43.6559 47.6847 38.8824C48.1141 39.236 48.5561 39.577 49.0107 39.88C47.2806 40.9029 45.4748 41.7616 43.5931 42.4688C44.5781 44.4009 45.7273 46.2573 47.028 48C52.7991 46.2573 58.2167 43.5422 63.0533 39.9684C64.3666 26.3299 60.8055 14.5099 53.6452 4.04104C49.4905 2.13418 45.0959 0.782952 40.5876 0.0252565L40.575 0ZM21.1401 32.7072C18.0209 32.7072 15.4321 29.8785 15.4321 26.3804C15.4321 22.8824 17.9199 20.041 21.1275 20.041C24.3351 20.041 26.886 22.895 26.8354 26.3804C26.7849 29.8658 24.3224 32.7072 21.1401 32.7072ZM42.1788 32.7072C39.047 32.7072 36.4834 29.8785 36.4834 26.3804C36.4834 22.8824 38.9712 20.041 42.1788 20.041C45.3864 20.041 47.9246 22.895 47.8741 26.3804C47.8236 29.8658 45.3611 32.7072 42.1788 32.7072Z" />
+                                </Viewbox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- Mute / Unmute Button -->
+                        <Button Grid.Row="2"
+                                x:Name="MuteButton"
+                                Margin="0,0,0,8"
+                                Click="MuteButton_OnClick"
+                                Style="{StaticResource DiscordPrimaryControlButtonStyle}">
+                            <Viewbox Width="21" Height="24">
+                                <Grid Width="16" Height="19">
+                                    <Grid x:Name="MuteIconRoot"
+                                          RenderTransformOrigin="0.5,0.48">
+                                        <Grid.RenderTransform>
+                                            <TransformGroup>
+                                                <ScaleTransform x:Name="MuteIconScaleTransform" ScaleX="1" ScaleY="1" />
+                                                <RotateTransform x:Name="MuteIconRotateTransform" Angle="0" />
+                                                <TranslateTransform x:Name="MuteIconTranslateTransform" X="0" Y="0" />
+                                            </TransformGroup>
+                                        </Grid.RenderTransform>
+                                        <Path Fill="#FFFFFF"
+                                              Data="M8,11 C9.65,11 11,9.65 11,8 L11,3 C11,1.35 9.65,0 8,0 C6.35,0 5,1.35 5,3 L5,8 C5,9.65 6.35,11 8,11 Z M13.3,8 C13.3,11 10.8,13 8,13 C5.2,13 2.7,11 2.7,8 L0.7,8 C0.7,11.53 3.61,14.43 7,14.92 L7,18 L9,18 L9,14.92 C12.39,14.43 15.3,11.53 15.3,8 L13.3,8 Z" />
+                                    </Grid>
+                                    <Line x:Name="MuteSlashLine"
+                                          X1="2"
+                                          Y1="1"
+                                          X2="14"
+                                          Y2="18"
+                                          Opacity="0"
+                                          Stroke="#ED4245"
+                                          StrokeThickness="2.5"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          Visibility="Collapsed"
+                                          RenderTransformOrigin="0.5,0.5">
+                                        <Line.RenderTransform>
+                                            <ScaleTransform x:Name="MuteSlashScaleTransform" ScaleX="1" ScaleY="0.22" />
+                                        </Line.RenderTransform>
+                                    </Line>
+                                </Grid>
+                            </Viewbox>
+                        </Button>
+
+                        <!-- Deafen / Undeafen Button -->
+                        <Button Grid.Row="3"
+                                x:Name="DeafenButton"
+                                Click="DeafenButton_OnClick"
+                                Style="{StaticResource DiscordPrimaryControlButtonStyle}">
+                            <Viewbox Width="24" Height="24">
+                                <Grid Width="16" Height="16">
+                                    <Grid x:Name="DeafenIconRoot"
+                                          RenderTransformOrigin="0.5,0.48">
+                                        <Grid.RenderTransform>
+                                            <TransformGroup>
+                                                <ScaleTransform x:Name="DeafenIconScaleTransform" ScaleX="1" ScaleY="1" />
+                                                <RotateTransform x:Name="DeafenIconRotateTransform" Angle="0" />
+                                                <TranslateTransform x:Name="DeafenIconTranslateTransform" X="0" Y="0" />
+                                            </TransformGroup>
+                                        </Grid.RenderTransform>
+                                        <Path Fill="#FFFFFF"
+                                              Data="M8,0 C3.58172,0 0,3.58172 0,8 L0,14 C0,15.1046 0.89543,16 2,16 L4,16 L4,9 L2,9 L2,8 C2,4.68629 4.68629,2 8,2 C11.3137,2 14,4.68629 14,8 L14,9 L12,9 L12,16 L14,16 C15.1046,16 16,15.1046 16,14 L16,8 C16,3.58172 12.4183,0 8,0 Z M14,14 L14,11 L14,14 Z" />
+                                    </Grid>
+                                    <Line x:Name="DeafenSlashLine"
+                                          X1="0.5"
+                                          Y1="0.5"
+                                          X2="15.5"
+                                          Y2="15.5"
+                                          Opacity="0"
+                                          Stroke="#ED4245"
+                                          StrokeThickness="2.5"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          Visibility="Collapsed"
+                                          RenderTransformOrigin="0.5,0.5">
+                                        <Line.RenderTransform>
+                                            <ScaleTransform x:Name="DeafenSlashScaleTransform" ScaleX="1" ScaleY="0.22" />
+                                        </Line.RenderTransform>
+                                    </Line>
+                                </Grid>
+                            </Viewbox>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

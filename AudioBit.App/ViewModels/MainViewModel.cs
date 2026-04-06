@@ -12,6 +12,7 @@ using AudioBit.App.Infrastructure;
 using AudioBit.App.Models;
 using AudioBit.App.Services;
 using AudioBit.Core;
+using AudioBit.Core.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -31,6 +32,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private static readonly TimeSpan ActiveRefreshInterval = TimeSpan.FromMilliseconds(40);
     private static readonly TimeSpan BalancedRefreshInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan LowPerformanceRefreshInterval = TimeSpan.FromMilliseconds(80);
+    private static readonly TimeSpan ManualGoogleSheetsExportWindow = TimeSpan.FromMinutes(5);
 
     private enum OverlaySurface
     {
@@ -59,7 +61,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly AppSettingsStore _appSettingsStore;
     private readonly StartupRegistrationService _startupRegistrationService;
     private readonly AppUpdaterService _appUpdaterService;
+    private readonly GoogleSheetsLogSyncService _googleSheetsLogSyncService;
     private readonly SpotifyViewModel _spotifyViewModel;
+    private readonly DiscordViewModel _discordViewModel;
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _masterVolumeAnimationTimer;
     private readonly DispatcherTimer _remoteConnectionTimer;
@@ -70,6 +74,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ObservableCollection<AudioDeviceOptionModel> _playbackDevices = new();
     private readonly ObservableCollection<AudioDeviceOptionModel> _captureDevices = new();
     private readonly DispatcherTimer _persistDebounceTimer;
+    private string _lastLoggedMonitoringSnapshot = string.Empty;
 
     private int _refreshInProgress;
     private bool _disposed;
@@ -88,6 +93,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isAlwaysOnTop;
     private bool _showAlwaysOnTopPin = true;
     private bool _spotifyWidgetEnabled = true;
+    private bool _discordWidgetEnabled = true;
     private bool _hideToTrayOnMinimize = true;
     private bool _isEmptyStateVisible = true;
     private bool _isMonitoring;
@@ -171,7 +177,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         AppSettingsStore appSettingsStore,
         StartupRegistrationService startupRegistrationService,
         AppUpdaterService appUpdaterService,
-        SpotifyViewModel spotifyViewModel)
+        GoogleSheetsLogSyncService googleSheetsLogSyncService,
+        SpotifyViewModel spotifyViewModel,
+        DiscordViewModel discordViewModel)
     {
         _audioSessionService = audioSessionService;
         _remoteClientService = remoteClientService;
@@ -179,8 +187,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _appSettingsStore = appSettingsStore;
         _startupRegistrationService = startupRegistrationService;
         _appUpdaterService = appUpdaterService;
+        _googleSheetsLogSyncService = googleSheetsLogSyncService;
         _spotifyViewModel = spotifyViewModel;
+        _discordViewModel = discordViewModel;
         Spotify = spotifyViewModel;
+        Discord = discordViewModel;
         Sessions = new ObservableCollection<AppAudioViewModel>();
         PlaybackDevices = new ReadOnlyObservableCollection<AudioDeviceOptionModel>(_playbackDevices);
         CaptureDevices = new ReadOnlyObservableCollection<AudioDeviceOptionModel>(_captureDevices);
@@ -216,6 +227,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ExportProfilesCommand = new RelayCommand(ExportProfiles);
         ImportProfilesCommand = new RelayCommand(ImportProfiles);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
+        ExportRecentLogsToGoogleSheetsCommand = new AsyncRelayCommand(ExportRecentLogsToGoogleSheetsAsync);
         RefreshRemotePairingCommand = new AsyncRelayCommand(RefreshRemotePairingAsync);
         GenerateRemoteQrCodeCommand = new RelayCommand(GenerateRemoteQrCode, CanGenerateRemoteQrCode);
         OpenRemoteQrCommand = new RelayCommand(OpenRemoteQrUrl, () => !string.IsNullOrWhiteSpace(RemoteQrUrl));
@@ -261,6 +273,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<AppAudioViewModel> Sessions { get; }
 
     public SpotifyViewModel Spotify { get; }
+
+    public DiscordViewModel Discord { get; }
 
     public ReadOnlyObservableCollection<AudioDeviceOptionModel> PlaybackDevices { get; }
 
@@ -325,6 +339,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public IRelayCommand ImportProfilesCommand { get; }
 
     public IRelayCommand OpenLogFolderCommand { get; }
+
+    public IAsyncRelayCommand ExportRecentLogsToGoogleSheetsCommand { get; }
 
     public IAsyncRelayCommand RefreshRemotePairingCommand { get; }
 
@@ -1103,6 +1119,20 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool DiscordWidgetEnabled
+    {
+        get => _discordWidgetEnabled;
+        set
+        {
+            if (!SetProperty(ref _discordWidgetEnabled, value))
+            {
+                return;
+            }
+
+            PersistSettingsIfReady();
+        }
+    }
+
     public bool IsAdvancedSettingsOpen
     {
         get => _isAdvancedSettingsOpen;
@@ -1355,17 +1385,21 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public void Start()
     {
+        AppLog.Info("MainViewModel", "Main view model start requested.");
         StartMonitoring();
         Spotify.Start();
+        Discord.Start();
         _ = _appUpdaterService.InitializeAsync(CancellationToken.None);
     }
 
     public void Stop()
     {
+        AppLog.Info("MainViewModel", "Main view model stop requested.");
         _refreshTimer.Stop();
         IsMonitoring = false;
         UpdateStatusText();
         Spotify.Stop();
+        Discord.Stop();
     }
 
     public bool ConsumeStartMinimized()
@@ -1383,6 +1417,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public void OnHiddenToTray()
     {
+        AppLog.Info("MainViewModel", $"Window hidden to tray. backgroundService={RunAsBackgroundService} monitoring={IsMonitoring}");
         Spotify.OnHiddenToTray();
 
         if (RunAsBackgroundService || !IsMonitoring)
@@ -1397,6 +1432,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public void OnRestoredFromTray()
     {
+        AppLog.Info("MainViewModel", $"Window restored from tray. resumeMonitoring={_resumeMonitoringWhenRestored}");
         Spotify.OnRestoredFromTray();
 
         if (!_resumeMonitoringWhenRestored)
@@ -1410,6 +1446,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     public void HandleGlobalMicMuteHotKey()
     {
+        AppLog.Info("MainViewModel", "Global mic mute hotkey invoked.");
         _audioSessionService.ToggleDefaultCaptureMute();
     }
 
@@ -1444,6 +1481,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         _disposed = true;
+        AppLog.Info("MainViewModel", "Disposing main view model.");
         _refreshTimer.Stop();
         _refreshTimer.Tick -= RefreshTimerOnTick;
         _masterVolumeAnimationTimer.Stop();
@@ -1455,6 +1493,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         _remoteClientService.SessionInfoChanged -= OnRemoteSessionInfoChanged;
         _appUpdaterService.StatusChanged -= OnAppUpdaterStatusChanged;
         Spotify.Dispose();
+        Discord.Dispose();
     }
 
     private bool CanRestartForUpdate()
@@ -1570,6 +1609,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             ApplySnapshot(snapshot);
             UpdateSpotifyLivePeak(snapshot);
+            UpdateDiscordLivePeak(snapshot);
             _remoteClientService.UpdateAudioSnapshot(
                 snapshot,
                 _audioSessionService.MasterVolume,
@@ -1580,13 +1620,15 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 _audioSessionService.RenderDeviceOptions,
                 _audioSessionService.CaptureDeviceOptions);
             UpdateStatusText();
+            LogMonitoringSnapshot(snapshot);
         }
-        catch
+        catch (Exception ex)
         {
             StatusText = "Audio session monitoring is temporarily unavailable.";
             HasPlaybackDevice = false;
             CurrentDeviceName = "No playback device";
             Spotify.UpdateLocalAudioState(0.0, false);
+            Discord.UpdateLocalAudioState(0.0, false);
 
             _isApplyingDeviceSnapshot = true;
             try
@@ -1598,6 +1640,8 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             {
                 _isApplyingDeviceSnapshot = false;
             }
+
+            AppLog.Error("MainViewModel", "Audio session refresh failed.", ex);
         }
         finally
         {
@@ -1814,6 +1858,32 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         Spotify.UpdateLocalAudioState(peak, hasLocalAudioActivity);
     }
 
+    private void UpdateDiscordLivePeak(IReadOnlyList<AppAudioModel> models)
+    {
+        double peak = 0.0;
+        bool hasVoiceActivity = false;
+        for (var index = 0; index < models.Count; index++)
+        {
+            var model = models[index];
+            if (!IsDiscordSession(model))
+            {
+                continue;
+            }
+
+            peak = Math.Max(peak, model.AudiblePeak);
+            hasVoiceActivity |= model.IsActive;
+        }
+
+        if (Discord.IsConnected)
+        {
+            var capturePeak = Math.Clamp((double)_audioSessionService.DefaultCapturePeak, 0.0, 1.0);
+            peak = Math.Max(peak, capturePeak);
+            hasVoiceActivity |= capturePeak > AppAudioModel.SilenceThreshold && !_audioSessionService.IsDefaultCaptureMuted;
+        }
+
+        Discord.UpdateLocalAudioState(peak, hasVoiceActivity);
+    }
+
     private static bool IsSpotifySession(AppAudioModel model)
     {
         if (model is null)
@@ -1830,6 +1900,22 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             && model.AppName.Contains("spotify", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsDiscordSession(AppAudioModel model)
+    {
+        if (model is null)
+        {
+            return false;
+        }
+
+        if (string.Equals(model.AppKey, "Discord", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(model.AppName)
+            && model.AppName.Contains("discord", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void StartMonitoring()
     {
         if (IsMonitoring)
@@ -1837,6 +1923,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        AppLog.Info("MainViewModel", $"Monitoring started. lowPerformanceMode={IsLowPerformanceMode}");
         IsMonitoring = true;
         UpdateRefreshInterval();
         _refreshTimer.Start();
@@ -1851,6 +1938,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        AppLog.Info("MainViewModel", "Monitoring stopped.");
         _refreshTimer.Stop();
         IsMonitoring = false;
         UpdateStatusText();
@@ -1980,6 +2068,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
     private void ResetSettings()
     {
+        AppLog.Warning("MainViewModel", "Resetting settings to defaults.");
         ApplySettingsSnapshot(new AppSettingsSnapshot(), persistToDisk: true);
         IsAdvancedSettingsOpen = false;
         IsResetConfirmationVisible = false;
@@ -2003,9 +2092,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             _appSettingsStore.SaveTo(dialog.FileName, CreateSettingsSnapshot());
+            AppLog.Info("MainViewModel", $"Settings exported to '{dialog.FileName}'.");
         }
         catch (Exception ex)
         {
+            AppLog.Error("MainViewModel", "Unable to export settings.", ex);
             MessageBox.Show($"Unable to export settings.\n\n{ex.Message}", "AudioBit", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -2027,9 +2118,11 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
 
             var importedSnapshot = _appSettingsStore.LoadFrom(dialog.FileName);
             ApplySettingsSnapshot(importedSnapshot, persistToDisk: true);
+            AppLog.Info("MainViewModel", $"Settings imported from '{dialog.FileName}'.");
         }
         catch (Exception ex)
         {
+            AppLog.Error("MainViewModel", "Unable to import settings.", ex);
             MessageBox.Show($"Unable to import settings.\n\n{ex.Message}", "AudioBit", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -2044,10 +2137,62 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 FileName = AudioBitPaths.LogsDirectoryPath,
                 UseShellExecute = true,
             });
+            AppLog.Info("MainViewModel", $"Opened log folder '{AudioBitPaths.LogsDirectoryPath}'.");
         }
         catch (Exception ex)
         {
+            AppLog.Error("MainViewModel", "Unable to open log folder.", ex);
             MessageBox.Show($"Unable to open the log folder.\n\n{ex.Message}", "AudioBit", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task ExportRecentLogsToGoogleSheetsAsync()
+    {
+        try
+        {
+            AppLog.Info(
+                "MainViewModel",
+                $"Manual Google Sheets log export requested. windowMinutes={ManualGoogleSheetsExportWindow.TotalMinutes:N0} advancedSettingsOpen={IsAdvancedSettingsOpen}");
+            var result = await _googleSheetsLogSyncService
+                .UploadRecentWindowAsync(ManualGoogleSheetsExportWindow, CancellationToken.None)
+                .ConfigureAwait(true);
+
+            if (!result.Uploaded)
+            {
+                AppLog.Warning("MainViewModel", "Manual Google Sheets log export skipped because there were no recent log entries.");
+                MessageBox.Show(
+                    "No AudioBit log entries were recorded during the last 5 minutes.",
+                    "AudioBit",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var sheetSummary = result.ConfirmedSheetName is null
+                ? $"requestedSheet='{result.RequestedSheetName}' confirmedSheet='(unconfirmed)'"
+                : $"requestedSheet='{result.RequestedSheetName}' confirmedSheet='{result.ConfirmedSheetName}' createdSheet={result.CreatedSheet?.ToString() ?? "(unconfirmed)"}";
+            AppLog.Info("MainViewModel", $"Manual Google Sheets log export completed. entries={result.EntryCount} {sheetSummary}");
+
+            var successMessage = result.ConfirmedSheetName is null
+                ? $"Uploaded {result.EntryCount} log entries from the last 5 minutes to Google Sheets.\n\nThe script reported success, but it did not confirm which tab received the rows."
+                : result.CreatedSheet == true
+                    ? $"Uploaded {result.EntryCount} log entries from the last 5 minutes to Google Sheets.\n\nThe script confirmed a new tab named '{result.ConfirmedSheetName}' was created."
+                    : $"Uploaded {result.EntryCount} log entries from the last 5 minutes to Google Sheets tab '{result.ConfirmedSheetName}'.";
+
+            MessageBox.Show(
+                successMessage,
+                "AudioBit",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("MainViewModel", "Manual Google Sheets log export failed.", ex);
+            MessageBox.Show(
+                $"Unable to upload the last 5 minutes of logs to Google Sheets.\n\n{ex.Message}",
+                "AudioBit",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 
@@ -2771,6 +2916,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             DebugMode = snapshot.DebugMode;
             IsDarkTheme = snapshot.IsDarkTheme;
             SpotifyWidgetEnabled = snapshot.SpotifyWidgetEnabled;
+            DiscordWidgetEnabled = snapshot.DiscordWidgetEnabled;
             ApplyPinnedAppKeys(snapshot.PinnedAppKeys);
             ApplySelectedAgent(snapshot.SelectedAgentKey);
             SelectedCalibrationMode = string.IsNullOrWhiteSpace(snapshot.SelectedCalibrationMode) ? "Adaptive" : snapshot.SelectedCalibrationMode;
@@ -2790,6 +2936,9 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         SyncStartupRegistration();
+        AppLog.Info(
+            "MainViewModel",
+            $"Applied settings snapshot. startup={OpenOnStartup} trayMinimize={HideToTrayOnMinimize} startMinimized={StartMinimized} lowPerf={IsLowPerformanceMode} themeDark={IsDarkTheme} spotifyWidget={SpotifyWidgetEnabled} discordWidget={DiscordWidgetEnabled} pinnedApps={_pinnedAppKeys.Count}");
 
         if (persistToDisk)
         {
@@ -2818,6 +2967,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             DebugMode = DebugMode,
             IsDarkTheme = IsDarkTheme,
             SpotifyWidgetEnabled = SpotifyWidgetEnabled,
+            DiscordWidgetEnabled = DiscordWidgetEnabled,
             SpotifyClientId = string.IsNullOrWhiteSpace(Spotify.ClientId) ? null : Spotify.ClientId,
             SelectedAgentKey = SelectedAgentKey,
             SelectedCalibrationMode = SelectedCalibrationMode,
@@ -2996,11 +3146,33 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             _appSettingsStore.Save(CreateSettingsSnapshot());
+            AppLog.Trace("MainViewModel", "Settings snapshot persisted to disk.");
         }
-        catch
+        catch (Exception ex)
         {
-            // Settings persistence should never break the running session.
+            AppLog.Error("MainViewModel", "Settings persistence failed.", ex);
         }
+    }
+
+    private void LogMonitoringSnapshot(IReadOnlyList<AppAudioModel> snapshot)
+    {
+        var summary = BuildMonitoringSnapshotSummary(snapshot);
+        if (string.Equals(summary, _lastLoggedMonitoringSnapshot, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastLoggedMonitoringSnapshot = summary;
+        AppLog.Trace("MainViewModel", summary);
+    }
+
+    private string BuildMonitoringSnapshotSummary(IReadOnlyList<AppAudioModel> snapshot)
+    {
+        var activeApps = snapshot
+            .Take(6)
+            .Select(model =>
+                $"{model.AppName}(pid={model.ProcessId},vol={(int)Math.Round(model.Volume * 100)},mute={model.IsMuted},active={model.Peak > AppAudioModel.SilenceThreshold},out='{model.PreferredRenderDeviceId}',in='{model.PreferredCaptureDeviceId}')");
+        return $"Monitoring snapshot: device='{_audioSessionService.CurrentDeviceName}', playbackReady={_audioSessionService.HasPlaybackDevice}, sessions={snapshot.Count}, master={(int)Math.Round(_audioSessionService.MasterVolume * 100)}, masterMuted={_audioSessionService.IsMasterMuted}, captureMuted={_audioSessionService.IsDefaultCaptureMuted}, outputId='{_audioSessionService.CurrentPlaybackDeviceId}', inputId='{_audioSessionService.CurrentCaptureDeviceId}', apps=[{string.Join(", ", activeApps)}]";
     }
 
     private void SyncStartupRegistration()

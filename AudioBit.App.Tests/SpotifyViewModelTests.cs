@@ -208,6 +208,29 @@ public sealed class SpotifyViewModelTests
         Assert.False(viewModel.ConnectCommand.CanExecute(null));
     }
 
+    [StaFact]
+    public void FallsBackToLocalSpotifyPresenceWhenApiStateIsUnavailable()
+    {
+        using var service = new FakeSpotifyService();
+        using var viewModel = new SpotifyViewModel(service, "0123456789abcdef0123456789abcdef", Dispatcher.CurrentDispatcher);
+
+        service.Publish(SpotifyPlaybackSnapshot.Create(
+            SpotifyConnectionState.Error,
+            isAuthenticated: false,
+            hasActiveDevice: false,
+            canControlPlayback: false,
+            statusText: "Reconnecting to Spotify..."));
+
+        viewModel.UpdateLocalAudioState(0.52, true);
+
+        Assert.True(viewModel.HasTrack);
+        Assert.True(viewModel.IsPlaying);
+        Assert.True(viewModel.HasLocalAudioActivity);
+        Assert.Equal("Spotify", viewModel.TrackName);
+        Assert.Equal("Spotify active on this PC", viewModel.ConnectionStatusText);
+        Assert.False(viewModel.ShowProgressBar);
+    }
+
     private static void PumpDispatcher(TimeSpan duration)
     {
         var timer = new DispatcherTimer(DispatcherPriority.Background)

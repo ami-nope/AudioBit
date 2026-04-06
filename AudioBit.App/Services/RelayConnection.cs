@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.IO;
+using AudioBit.App.Infrastructure;
 
 namespace AudioBit.App.Services;
 
@@ -69,13 +70,7 @@ internal sealed class RelayConnection : IDisposable
             endpoint = _endpoint;
         }
 
-        var socket = new ClientWebSocket
-        {
-            Options =
-            {
-                KeepAliveInterval = TimeSpan.FromSeconds(20),
-            },
-        };
+        var socket = NetworkClientFactory.CreateWebSocket();
 
         using var connectTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         connectTimeoutCts.CancelAfter(ConnectTimeout);

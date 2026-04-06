@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using AudioBit.App.Infrastructure;
 using AudioBit.App.Models;
 
 namespace AudioBit.App.Services;
@@ -21,10 +22,7 @@ internal sealed class RemoteSessionManager : IDisposable
     {
         _log = log;
         _httpBaseUri = httpBaseUri;
-        _httpClient = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(12),
-        };
+        _httpClient = NetworkClientFactory.CreateHttpClient(TimeSpan.FromSeconds(12), acceptHeader: "application/json");
     }
 
     public RemoteSessionInfo CurrentSession { get; private set; } = RemoteSessionInfo.Empty;

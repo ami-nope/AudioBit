@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -8,12 +9,14 @@ using System.Text.Json;
 using AudioBit.App.Infrastructure;
 using AudioBit.App.Models;
 using AudioBit.Core;
+using AudioBit.Core.Diagnostics;
 
 namespace AudioBit.App.Services;
 
 internal sealed class RemoteClientService : IDisposable
 {
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MaxReconnectDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SessionProbeTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan SessionProbeRetryDelay = TimeSpan.FromMilliseconds(200);
     private const int PrimaryProbeAttempts = 3;
@@ -52,6 +55,7 @@ internal sealed class RemoteClientService : IDisposable
     private bool _disposed;
     private bool _autoReconnectEnabled = true;
     private bool _helloCompleted;
+    private int _consecutiveConnectionFailures;
     private RemoteSessionInfo _sessionInfo = RemoteSessionInfo.Empty;
     private RemoteStateModel _latestState = new();
     private List<object[]> _latestLevels = [];
@@ -100,9 +104,9 @@ internal sealed class RemoteClientService : IDisposable
         _activeRelayRouteLabel = initialTarget.Name;
         _activeRelayProbeLatencyMs = null;
 
-        _sessionManager = new RemoteSessionManager(initialTarget.HttpBaseUri, Log);
-        _relayConnection = new RelayConnection(initialTarget.WsEndpoint, Log);
-        _commandDispatcher = new RemoteCommandDispatcher(_audioSessionService, Log);
+        _sessionManager = new RemoteSessionManager(initialTarget.HttpBaseUri, message => Log(message));
+        _relayConnection = new RelayConnection(initialTarget.WsEndpoint, message => Log(message));
+        _commandDispatcher = new RemoteCommandDispatcher(_audioSessionService, message => Log(message));
 
         _relayConnection.Connected += OnRelayConnected;
         _relayConnection.Disconnected += OnRelayDisconnected;
@@ -356,10 +360,12 @@ internal sealed class RemoteClientService : IDisposable
 
     private async Task RunConnectionLoopAsync(CancellationToken cancellationToken)
     {
+        Log("Remote connection loop started.");
         while (!cancellationToken.IsCancellationRequested)
         {
             var shouldFailover = false;
             var failoverReason = string.Empty;
+            var reconnectDelay = ReconnectDelay;
 
             try
             {
@@ -401,13 +407,18 @@ internal sealed class RemoteClientService : IDisposable
             }
             catch (Exception ex)
             {
-                Log($"Connection loop error: {ex.Message}");
+                Log(
+                    "Remote connection loop failed.",
+                    ex,
+                    ("Operation", "RunConnectionLoopAsync"),
+                    ("ActiveRelayIndex", _activeRelayTargetIndex));
                 shouldFailover = true;
                 failoverReason = ex.Message;
             }
 
             if (!cancellationToken.IsCancellationRequested && shouldFailover)
             {
+                reconnectDelay = GetReconnectDelayAfterFailure();
                 UpdateSessionInfo(
                     status: BuildRelayFailureStatus(failoverReason),
                     isRelayConnected: false,
@@ -422,14 +433,15 @@ internal sealed class RemoteClientService : IDisposable
                     SwitchRelayTargetAfterFailure(failoverReason);
                 }
 
-                Log("Reconnect attempt in 2 seconds...");
-                await Task.Delay(ReconnectDelay, cancellationToken).ConfigureAwait(false);
+                Log($"Reconnect attempt in {Math.Max(1, (int)Math.Round(reconnectDelay.TotalSeconds))} seconds...");
+                await Task.Delay(reconnectDelay, cancellationToken).ConfigureAwait(false);
             }
         }
     }
 
     private async Task RunStateLoopAsync(CancellationToken cancellationToken)
     {
+        Trace("Remote state loop started.");
         using var timer = new PeriodicTimer(StateInterval);
         while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -457,7 +469,7 @@ internal sealed class RemoteClientService : IDisposable
                 }
 
                 await SendAsync(stateToSend, cancellationToken).ConfigureAwait(false);
-                Log("state sent");
+                Trace("state sent");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -465,13 +477,17 @@ internal sealed class RemoteClientService : IDisposable
             }
             catch (Exception ex)
             {
-                Log($"State loop send failed: {ex.Message}");
+                Log(
+                    "Remote state loop send failed.",
+                    ex,
+                    ("Operation", "RunStateLoopAsync"));
             }
         }
     }
 
     private async Task RunMeterLoopAsync(CancellationToken cancellationToken)
     {
+        Trace("Remote meter loop started.");
         using var timer = new PeriodicTimer(MeterInterval);
         while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -501,7 +517,10 @@ internal sealed class RemoteClientService : IDisposable
             }
             catch (Exception ex)
             {
-                Log($"Meter loop send failed: {ex.Message}");
+                Log(
+                    "Remote meter loop send failed.",
+                    ex,
+                    ("Operation", "RunMeterLoopAsync"));
             }
         }
     }
@@ -553,7 +572,10 @@ internal sealed class RemoteClientService : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Message handling failed: {ex.Message}");
+            Log(
+                "Remote relay message handling failed.",
+                ex,
+                ("Operation", "OnRelayMessageReceived"));
         }
     }
 
@@ -600,6 +622,7 @@ internal sealed class RemoteClientService : IDisposable
                 if (string.Equals(role, "pc", StringComparison.OrdinalIgnoreCase))
                 {
                     _helloCompleted = true;
+                    _consecutiveConnectionFailures = 0;
                     UpdateSessionInfo(status: "Ready for pairing", isRelayConnected: true);
                     lock (_syncRoot)
                     {
@@ -1124,7 +1147,13 @@ internal sealed class RemoteClientService : IDisposable
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 lastError = ex;
-                Log($"Relay session probe failed ({target.Name}) attempt {attempt}/{totalAttempts}: {ex.Message}");
+                Log(
+                    $"Relay session probe failed ({target.Name}) attempt {attempt}/{totalAttempts}.",
+                    ex,
+                    ("Operation", "ProbeRelaySessionAsync"),
+                    ("TargetName", target.Name),
+                    ("Attempt", attempt),
+                    ("TotalAttempts", totalAttempts));
             }
 
             if (attempt < totalAttempts)
@@ -1333,8 +1362,14 @@ internal sealed class RemoteClientService : IDisposable
         return string.IsNullOrWhiteSpace(incoming) ? existing : incoming.Trim();
     }
 
-    private void Log(string message)
+    private void Trace(string message)
     {
+        Log(message, AppLogLevel.Trace);
+    }
+
+    private void Log(string message, AppLogLevel? level = null)
+    {
+        AppLogTextWriter.Write("RemoteClient", message, level);
         var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] [RemoteClient] {message}";
         Debug.WriteLine(logLine);
         LogMessage?.Invoke(logLine);
@@ -1345,6 +1380,45 @@ internal sealed class RemoteClientService : IDisposable
             {
                 Directory.CreateDirectory(AudioBitPaths.LogsDirectoryPath);
                 File.AppendAllText(Path.Combine(AudioBitPaths.LogsDirectoryPath, "remote-client.log"), logLine + Environment.NewLine);
+            }
+        }
+        catch
+        {
+            // Logging must never break control flow.
+        }
+    }
+
+    private void Log(string message, Exception exception, params (string Key, object? Value)[] context)
+    {
+        AppLogTextWriter.Write(
+            "RemoteClient",
+            message,
+            exception,
+            context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+        var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] [RemoteClient] {message}";
+        Debug.WriteLine(logLine);
+        LogMessage?.Invoke(logLine);
+
+        try
+        {
+            var details = AppLogExceptionFormatter.Format(
+                "RemoteClient",
+                message,
+                exception,
+                context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+            var entry = new System.Text.StringBuilder()
+                .Append('[').Append(DateTimeOffset.Now.ToString("O")).Append("] [RemoteClient] ").AppendLine(message);
+            using var reader = new StringReader(details);
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                entry.Append("    ").AppendLine(line);
+            }
+
+            lock (LogFileGate)
+            {
+                Directory.CreateDirectory(AudioBitPaths.LogsDirectoryPath);
+                File.AppendAllText(Path.Combine(AudioBitPaths.LogsDirectoryPath, "remote-client.log"), entry.ToString());
             }
         }
         catch
@@ -1392,13 +1466,7 @@ internal sealed class RemoteClientService : IDisposable
 
     private static HttpClient CreateGeoIpClient()
     {
-        var client = new HttpClient
-        {
-            Timeout = GeoIpLookupTimeout,
-        };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("AudioBit");
-        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-        return client;
+        return NetworkClientFactory.CreateHttpClient(GeoIpLookupTimeout, acceptHeader: "application/json");
     }
 
     private static RemoteStateModel CloneState(RemoteStateModel source)
@@ -1819,7 +1887,11 @@ internal sealed class RemoteClientService : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"GeoIP lookup failed for {normalizedIp}: {ex.Message}");
+            Log(
+                $"GeoIP lookup failed for {normalizedIp}.",
+                ex,
+                ("Operation", "TryResolveGeoIpDetailsAsync"),
+                ("IpAddress", normalizedIp));
         }
     }
 
@@ -1891,7 +1963,11 @@ internal sealed class RemoteClientService : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"GeoIP lookup failed for {ipAddress}: {ex.Message}");
+            Log(
+                $"GeoIP lookup failed for {ipAddress}.",
+                ex,
+                ("Operation", "TryResolveGeoIpLocationAsync"),
+                ("IpAddress", ipAddress));
             return null;
         }
         finally
@@ -2138,9 +2214,46 @@ internal sealed class RemoteClientService : IDisposable
         var prefix = string.IsNullOrWhiteSpace(relayLabel)
             ? "Relay error"
             : $"Relay error ({relayLabel})";
-        return string.IsNullOrWhiteSpace(reason)
-            ? prefix
-            : $"{prefix}: {reason.Trim()}";
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            return prefix;
+        }
+
+        var normalizedReason = reason.Trim();
+        if (IsRelayEndpointUnavailableReason(normalizedReason))
+        {
+            return $"{prefix}: blocked or unreachable. Check firewall, VPN, proxy, or network.";
+        }
+
+        if (normalizedReason.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{prefix}: timed out. Check firewall, VPN, proxy, or network.";
+        }
+
+        if (normalizedReason.Contains("closed", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{prefix}: connection dropped. Retrying...";
+        }
+
+        return $"{prefix}: {normalizedReason}";
+    }
+
+    private TimeSpan GetReconnectDelayAfterFailure()
+    {
+        _consecutiveConnectionFailures = Math.Min(_consecutiveConnectionFailures + 1, 12);
+        var seconds = ReconnectDelay.TotalSeconds * Math.Pow(1.5, Math.Max(0, _consecutiveConnectionFailures - 1));
+        return TimeSpan.FromSeconds(Math.Min(MaxReconnectDelay.TotalSeconds, seconds));
+    }
+
+    private static bool IsRelayEndpointUnavailableReason(string reason)
+    {
+        return reason.Contains("Unable to connect to the remote server", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("No such host is known", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("actively refused", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("forbidden by its access permissions", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("Name or service not known", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("Network is unreachable", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("proxy", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Uri? GetConfiguredUriOrNull(string envVar)

@@ -941,6 +941,7 @@ public partial class MainWindow : Window
 
         var shellRegion = CreateShellRegion(dpi, width, height, cornerDiameterX, cornerDiameterY);
         var widgetRegion = CreateSpotifyWidgetRegion(dpi);
+        var discordRegion = CreateDiscordWidgetRegion(dpi);
         var regionHandle = shellRegion;
 
         if (regionHandle != IntPtr.Zero && widgetRegion != IntPtr.Zero)
@@ -952,9 +953,23 @@ public partial class MainWindow : Window
             }
         }
 
+        if (regionHandle != IntPtr.Zero && discordRegion != IntPtr.Zero)
+        {
+            if (CombineRgn(regionHandle, regionHandle, discordRegion, RgnOr) == 0)
+            {
+                DeleteObject(discordRegion);
+                discordRegion = IntPtr.Zero;
+            }
+        }
+
         if (widgetRegion != IntPtr.Zero)
         {
             DeleteObject(widgetRegion);
+        }
+
+        if (discordRegion != IntPtr.Zero)
+        {
+            DeleteObject(discordRegion);
         }
 
         if (regionHandle == IntPtr.Zero)
@@ -1002,6 +1017,30 @@ public partial class MainWindow : Window
         var top = (int)Math.Floor(widgetOrigin.Y * dpi.DpiScaleY);
         var right = (int)Math.Ceiling((widgetOrigin.X + SpotifyWidget.ActualWidth) * dpi.DpiScaleX);
         var bottom = (int)Math.Ceiling((widgetOrigin.Y + SpotifyWidget.ActualHeight) * dpi.DpiScaleY);
+        var cornerDiameterX = Math.Max(2, (int)Math.Ceiling(widgetCornerRadius * 2 * dpi.DpiScaleX));
+        var cornerDiameterY = Math.Max(2, (int)Math.Ceiling(widgetCornerRadius * 2 * dpi.DpiScaleY));
+
+        return CreateRoundRectRgn(left, top, right + 1, bottom + 1, cornerDiameterX, cornerDiameterY);
+    }
+
+    private IntPtr CreateDiscordWidgetRegion(DpiScale dpi)
+    {
+        if (DiscordWidget is null
+            || DiscordWidget.Visibility != Visibility.Visible
+            || !DiscordWidget.IsVisible
+            || DiscordWidget.ActualWidth <= 0
+            || DiscordWidget.ActualHeight <= 0)
+        {
+            return IntPtr.Zero;
+        }
+
+        var widgetOrigin = DiscordWidget.TranslatePoint(new Point(0, 0), this);
+        const double widgetCornerRadius = 18;
+
+        var left = (int)Math.Floor(widgetOrigin.X * dpi.DpiScaleX);
+        var top = (int)Math.Floor(widgetOrigin.Y * dpi.DpiScaleY);
+        var right = (int)Math.Ceiling((widgetOrigin.X + DiscordWidget.ActualWidth) * dpi.DpiScaleX);
+        var bottom = (int)Math.Ceiling((widgetOrigin.Y + DiscordWidget.ActualHeight) * dpi.DpiScaleY);
         var cornerDiameterX = Math.Max(2, (int)Math.Ceiling(widgetCornerRadius * 2 * dpi.DpiScaleX));
         var cornerDiameterY = Math.Max(2, (int)Math.Ceiling(widgetCornerRadius * 2 * dpi.DpiScaleY));
 

@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using AudioBit.Core.Diagnostics;
 
 namespace AudioBit.Core;
 
@@ -71,7 +73,12 @@ internal sealed class AudioPolicyConfigBridge
         }
         catch (Exception ex)
         {
-            Log($"GET exception: pid={processId} flow={flow} error={ex.Message}");
+            Log(
+                $"GET exception: pid={processId} flow={flow}",
+                ex,
+                ("Operation", "TryGetPersistedDefaultAudioEndpoint"),
+                ("ProcessId", processId),
+                ("Flow", flow));
             InvalidateFactory();
             return false;
         }
@@ -135,7 +142,13 @@ internal sealed class AudioPolicyConfigBridge
         }
         catch (Exception ex)
         {
-            Log($"SET exception: pid={processId} flow={flow} deviceId='{deviceId}' error={ex.Message}");
+            Log(
+                $"SET exception: pid={processId} flow={flow} deviceId='{deviceId}'",
+                ex,
+                ("Operation", "TrySetPersistedDefaultAudioEndpoint"),
+                ("ProcessId", processId),
+                ("Flow", flow),
+                ("DeviceId", deviceId));
             InvalidateFactory();
             return false;
         }
@@ -235,7 +248,11 @@ internal sealed class AudioPolicyConfigBridge
                 }
                 catch (Exception ex)
                 {
-                    Log($"Factory activation failed for IID={iid}: {ex.Message}");
+                    Log(
+                        $"Factory activation failed for IID={iid}.",
+                        ex,
+                        ("Operation", "GetOrCreateFactory"),
+                        ("FactoryIid", iid));
                 }
             }
 
@@ -523,10 +540,46 @@ internal sealed class AudioPolicyConfigBridge
     private static void Log(string message)
     {
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
+        AppLogTextWriter.Write("AudioRouting", message);
+
         try
         {
             var logPath = Path.Combine(AppContext.BaseDirectory, "audiobit-route.log");
             File.AppendAllText(logPath, line + Environment.NewLine);
+        }
+        catch
+        {
+            // Don't let logging failures break routing.
+        }
+    }
+
+    private static void Log(string message, Exception exception, params (string Key, object? Value)[] context)
+    {
+        AppLogTextWriter.Write(
+            "AudioRouting",
+            message,
+            exception,
+            context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
+
+        try
+        {
+            var details = AppLogExceptionFormatter.Format(
+                "AudioRouting",
+                message,
+                exception,
+                context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+            var entry = new System.Text.StringBuilder()
+                .Append(line).AppendLine();
+            using var reader = new StringReader(details);
+            string? detailLine;
+            while ((detailLine = reader.ReadLine()) is not null)
+            {
+                entry.Append("    ").AppendLine(detailLine);
+            }
+
+            var logPath = Path.Combine(AppContext.BaseDirectory, "audiobit-route.log");
+            File.AppendAllText(logPath, entry.ToString());
         }
         catch
         {

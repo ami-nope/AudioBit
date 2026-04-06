@@ -3,6 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True"
              mc:Ignorable="d">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
@@ -100,14 +102,8 @@
                     Height="136"
                     Background="{DynamicResource SpotifyWidgetGlassBrush}"
                     BorderThickness="0"
-                    CornerRadius="18"
-                    ClipToBounds="True">
+                    CornerRadius="18">
                 <Grid>
-                    <Border Height="30"
-                            VerticalAlignment="Top"
-                            CornerRadius="18,18,10,10"
-                            Background="{DynamicResource SpotifyWidgetGlassBrush}" />
-
                     <Grid Margin="8,10,8,12">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -276,7 +272,6 @@
                Closed="WidgetPopup_OnClosed">
             <Border Width="280"
                     Height="136"
-                    ClipToBounds="True"
                     Background="Transparent">
                 <Border x:Name="ExpandedPanel"
                         Width="280"
@@ -294,11 +289,6 @@
                     </Border.RenderTransform>
 
                     <Grid Width="280" Height="136">
-                        <Border Height="34"
-                                VerticalAlignment="Top"
-                                CornerRadius="20,20,0,0"
-                                Background="{DynamicResource SpotifyWidgetGlassBrush}" />
-
                         <Grid Margin="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="112" />

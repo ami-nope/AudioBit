@@ -49,6 +49,14 @@ public sealed class AppSettingsSnapshot
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SpotifyClientId { get; set; }
 
+    public bool DiscordWidgetEnabled { get; set; } = true;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DiscordClientId { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DiscordClientSecret { get; set; }
+
     // User-selected custom background. Supports a solid color or a simple multi-stop gradient string.
     public string? CustomBackground { get; set; }
 

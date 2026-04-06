@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using AudioBit.App.Infrastructure;
 using AudioBit.App.Models;
 using AudioBit.App.Services;
+using AudioBit.Core.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -40,6 +41,8 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
     private int _trackDurationMs;
     private DateTimeOffset _progressBaseUtc = DateTimeOffset.UtcNow;
     private DateTimeOffset _lastPlaybackActivityUtc = DateTimeOffset.MinValue;
+    private bool _usingLocalPlaybackFallback;
+    private string _lastLoggedSnapshot = string.Empty;
 
     public SpotifyViewModel(ISpotifyService spotifyService, string clientId, Dispatcher? dispatcher = null)
     {
@@ -225,11 +228,13 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
 
     public void Start()
     {
+        AppLog.Info("SpotifyViewModel", "Spotify view model start requested.");
         _ = InitializeAsync(CancellationToken.None);
     }
 
     public void Stop()
     {
+        AppLog.Info("SpotifyViewModel", "Spotify view model stop requested.");
         _progressTimer.Stop();
         UpdateLocalAudioState(0.0, false);
         _ = _spotifyService.StopPollingAsync();
@@ -237,6 +242,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
 
     public void OnHiddenToTray()
     {
+        AppLog.Trace("SpotifyViewModel", "Spotify widget hidden to tray.");
         _progressTimer.Stop();
         UpdateLocalAudioState(0.0, false);
         _ = _spotifyService.StopPollingAsync();
@@ -246,6 +252,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
     {
         if (IsAuthenticated)
         {
+            AppLog.Trace("SpotifyViewModel", "Spotify widget restored from tray. Restarting polling.");
             _ = _spotifyService.StartPollingAsync(CancellationToken.None);
         }
     }
@@ -258,6 +265,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
         }
 
         _disposed = true;
+        AppLog.Info("SpotifyViewModel", "Disposing Spotify view model.");
         _progressTimer.Stop();
         _progressTimer.Tick -= ProgressTimerOnTick;
         _spotifyService.PlaybackStateChanged -= SpotifyServiceOnPlaybackStateChanged;
@@ -276,6 +284,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
         {
             LivePeak = clamped;
             HasLocalAudioActivity = hasLocalAudioActivity;
+            UpdateLocalPlaybackFallback(hasLocalAudioActivity);
             return;
         }
 
@@ -285,11 +294,13 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
             {
                 LivePeak = clamped;
                 HasLocalAudioActivity = hasLocalAudioActivity;
+                UpdateLocalPlaybackFallback(hasLocalAudioActivity);
             }));
     }
 
     private async Task InitializeAsync(CancellationToken cancellationToken)
     {
+        AppLog.Info("SpotifyViewModel", $"Initializing Spotify integration. configured={IsConfigured}");
         await _spotifyService.InitializeAsync(_clientId, cancellationToken).ConfigureAwait(false);
         if (_spotifyService.CurrentSnapshot.IsAuthenticated)
         {
@@ -307,6 +318,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
         IsBusy = true;
         try
         {
+            AppLog.Info("SpotifyViewModel", "Spotify connect requested.");
             await _spotifyService.ConnectAsync(_clientId, CancellationToken.None).ConfigureAwait(false);
         }
         finally
@@ -325,6 +337,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
         IsBusy = true;
         try
         {
+            AppLog.Info("SpotifyViewModel", "Spotify disconnect requested.");
             await _spotifyService.DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
         }
         finally
@@ -372,6 +385,7 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
 
     private void ApplySnapshot(SpotifyPlaybackSnapshot snapshot)
     {
+        _usingLocalPlaybackFallback = false;
         var isPlaybackActive = snapshot.ConnectionState == SpotifyConnectionState.Playing
             || snapshot.Track?.IsPlaying == true;
 
@@ -439,6 +453,8 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
         {
             _progressTimer.Stop();
         }
+
+        LogSnapshot(snapshot);
     }
 
     private bool ShouldPreservePlaybackAcrossDeviceTransfer(SpotifyPlaybackSnapshot snapshot, bool isPlaybackActive)
@@ -471,6 +487,62 @@ public sealed class SpotifyViewModel : ObservableObject, IDisposable
             || snapshot.ConnectionState == SpotifyConnectionState.ConnectedIdle
             || snapshot.ConnectionState == SpotifyConnectionState.NoActiveDevice
             || snapshot.ConnectionState == SpotifyConnectionState.Error;
+    }
+
+    private void UpdateLocalPlaybackFallback(bool hasLocalAudioActivity)
+    {
+        var snapshot = _spotifyService.CurrentSnapshot;
+        var shouldFallback = hasLocalAudioActivity
+            && !HasTrack
+            && (snapshot.ConnectionState == SpotifyConnectionState.Disconnected
+                || snapshot.ConnectionState == SpotifyConnectionState.Error
+                || snapshot.ConnectionState == SpotifyConnectionState.NoActiveDevice
+                || snapshot.ConnectionState == SpotifyConnectionState.AuthExpired
+                || snapshot.ConnectionState == SpotifyConnectionState.ConnectedIdle);
+
+        if (shouldFallback)
+        {
+            _usingLocalPlaybackFallback = true;
+            IsPlaying = true;
+            HasTrack = true;
+            HasActiveDevice = true;
+            CanControlPlayback = snapshot.CanControlPlayback;
+            TrackName = "Spotify";
+            ArtistName = snapshot.IsAuthenticated
+                ? "Detected locally while reconnecting"
+                : "Detected locally on this PC";
+            StatusText = snapshot.IsAuthenticated
+                ? "Spotify active locally while reconnecting"
+                : "Spotify active on this PC";
+            ConnectionStatusText = StatusText;
+            AlbumArt = null;
+            _trackDurationMs = 0;
+            _progressBaseMs = 0;
+            _progressBaseUtc = DateTimeOffset.UtcNow;
+            ProgressPercent = 0;
+            ShowProgressBar = false;
+            _progressTimer.Stop();
+            return;
+        }
+
+        if (!_usingLocalPlaybackFallback || hasLocalAudioActivity)
+        {
+            return;
+        }
+
+        ApplySnapshot(snapshot);
+    }
+
+    private void LogSnapshot(SpotifyPlaybackSnapshot snapshot)
+    {
+        var summary = $"Spotify snapshot: state={snapshot.ConnectionState}, auth={snapshot.IsAuthenticated}, activeDevice={snapshot.HasActiveDevice}, canControl={snapshot.CanControlPlayback}, playing={IsPlaying}, track='{TrackName}', artist='{ArtistName}', status='{snapshot.StatusText}'";
+        if (string.Equals(summary, _lastLoggedSnapshot, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastLoggedSnapshot = summary;
+        AppLog.Trace("SpotifyViewModel", summary);
     }
 
     private void ProgressTimerOnTick(object? sender, EventArgs e)

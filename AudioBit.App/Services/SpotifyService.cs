@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -10,6 +11,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using AudioBit.App.Infrastructure;
 using AudioBit.App.Models;
+using AudioBit.Core.Diagnostics;
 
 namespace AudioBit.App.Services;
 
@@ -243,6 +245,7 @@ public sealed class SpotifyService : ISpotifyService
         ThrowIfDisposed();
 
         clientId = NormalizeClientId(clientId);
+        Log($"Spotify connect flow started. redirectUri='{RedirectUri}' configuredClientId={!string.IsNullOrWhiteSpace(clientId)}");
         if (string.IsNullOrWhiteSpace(clientId))
         {
             PublishSnapshot(SpotifyPlaybackSnapshot.Create(
@@ -274,7 +277,12 @@ public sealed class SpotifyService : ISpotifyService
         }
         catch (Exception ex)
         {
-            Log($"Failed to start Spotify callback listener: {ex}");
+            Log(
+                "Failed to start Spotify callback listener.",
+                ex,
+                ("Operation", "ConnectAsync"),
+                ("RedirectUri", RedirectUri),
+                ("ClientIdConfigured", !string.IsNullOrWhiteSpace(clientId)));
             PublishSnapshot(SpotifyPlaybackSnapshot.Create(
                 SpotifyConnectionState.Error,
                 isAuthenticated: false,
@@ -292,10 +300,15 @@ public sealed class SpotifyService : ISpotifyService
                 FileName = authorizeUrl,
                 UseShellExecute = true,
             });
+            Log($"Spotify auth browser launched. redirectUri='{RedirectUri}'");
         }
         catch (Exception ex)
         {
-            Log($"Failed to launch Spotify auth browser: {ex}");
+            Log(
+                "Failed to launch Spotify auth browser.",
+                ex,
+                ("Operation", "ConnectAsync"),
+                ("RedirectUri", RedirectUri));
             PublishSnapshot(DisconnectedSnapshot);
             return;
         }
@@ -306,15 +319,21 @@ public sealed class SpotifyService : ISpotifyService
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(AuthCallbackTimeout);
             context = await listener.GetContextAsync().WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+            Log("Spotify auth callback received.");
         }
         catch (OperationCanceledException)
         {
+            Log("Spotify auth callback timed out or was cancelled.");
             PublishSnapshot(DisconnectedSnapshot);
             return;
         }
         catch (Exception ex)
         {
-            Log($"Spotify callback failed: {ex}");
+            Log(
+                "Spotify auth callback failed.",
+                ex,
+                ("Operation", "ConnectAsync"),
+                ("RedirectUri", RedirectUri));
             PublishSnapshot(SpotifyPlaybackSnapshot.Create(
                 SpotifyConnectionState.Error,
                 isAuthenticated: false,
@@ -377,6 +396,7 @@ public sealed class SpotifyService : ISpotifyService
     public async Task DisconnectAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        Log("Spotify disconnect flow started.");
         await StopPollingAsync().ConfigureAwait(false);
 
         await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -425,16 +445,19 @@ public sealed class SpotifyService : ISpotifyService
         {
             if (_tokenState is null || _tokenState.IsEmpty)
             {
+                Log("Spotify polling start skipped because no token is available.");
                 return;
             }
 
             if (_pollingTask is not null && !_pollingTask.IsCompleted)
             {
+                Log("Spotify polling start skipped because the polling loop is already running.");
                 return;
             }
 
             _pollingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _pollingTask = PollLoopAsync(_pollingCts.Token);
+            Log("Spotify polling started.");
         }
         finally
         {
@@ -467,6 +490,7 @@ public sealed class SpotifyService : ISpotifyService
 
         if (pollingCts is null)
         {
+            Log("Spotify polling stop skipped because the polling loop was not running.");
             return;
         }
 
@@ -477,13 +501,19 @@ public sealed class SpotifyService : ISpotifyService
             {
                 await pollingTask.ConfigureAwait(false);
             }
+
+            Log("Spotify polling stopped.");
         }
         catch (OperationCanceledException)
         {
         }
         catch (Exception ex)
         {
-            Log($"Spotify polling stopped with error: {ex}");
+            Log(
+                "Spotify polling stopped with an error.",
+                ex,
+                ("Operation", "StopPollingAsync"),
+                ("AwaitPollingTask", awaitPollingTask));
         }
         finally
         {
@@ -628,7 +658,11 @@ public sealed class SpotifyService : ISpotifyService
         }
         catch (Exception ex)
         {
-            Log($"Spotify polling error: {ex}");
+            Log(
+                "Spotify polling refresh failed.",
+                ex,
+                ("Operation", "RefreshPlaybackSnapshotAsync"),
+                ("Endpoint", CurrentPlaybackEndpoint));
             PublishTemporaryUnavailableSnapshot();
         }
     }
@@ -692,6 +726,7 @@ public sealed class SpotifyService : ISpotifyService
     private async Task SendPlayerCommandAsync(HttpMethod method, string endpoint, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        Log($"Spotify player command started. method={method.Method} endpoint='{endpoint}'");
 
         if (_tokenState is null || _tokenState.IsEmpty)
         {
@@ -750,7 +785,12 @@ public sealed class SpotifyService : ISpotifyService
         }
         catch (Exception ex)
         {
-            Log($"Spotify player command failed: {ex}");
+            Log(
+                "Spotify player command failed.",
+                ex,
+                ("Operation", "SendPlayerCommandAsync"),
+                ("HttpMethod", method.Method),
+                ("Endpoint", endpoint));
             PublishTemporaryUnavailableSnapshot();
         }
     }
@@ -836,6 +876,8 @@ public sealed class SpotifyService : ISpotifyService
                 return TokenRefreshResult.NotRequired;
             }
 
+            Log($"Spotify token refresh started. forceRefresh={forceRefresh}");
+
             var content = new FormUrlEncodedContent(
             [
                 new KeyValuePair<string, string>("client_id", _clientId),
@@ -892,12 +934,22 @@ public sealed class SpotifyService : ISpotifyService
         }
         catch (HttpRequestException ex)
         {
-            Log($"Spotify token refresh failed: {ex}");
+            Log(
+                "Spotify token refresh failed.",
+                ex,
+                ("Operation", "TryRefreshAccessTokenAsync"),
+                ("ForceRefresh", forceRefresh),
+                ("Endpoint", TokenEndpoint));
             return TokenRefreshResult.TransientFailure;
         }
         catch (Exception ex)
         {
-            Log($"Spotify token refresh failed: {ex}");
+            Log(
+                "Spotify token refresh failed.",
+                ex,
+                ("Operation", "TryRefreshAccessTokenAsync"),
+                ("ForceRefresh", forceRefresh),
+                ("Endpoint", TokenEndpoint));
             return TokenRefreshResult.TransientFailure;
         }
         finally
@@ -914,6 +966,7 @@ public sealed class SpotifyService : ISpotifyService
     {
         try
         {
+            Log("Spotify token exchange started.");
             var content = new FormUrlEncodedContent(
             [
                 new KeyValuePair<string, string>("client_id", clientId),
@@ -957,7 +1010,12 @@ public sealed class SpotifyService : ISpotifyService
         }
         catch (Exception ex)
         {
-            Log($"Spotify token exchange threw: {ex}");
+            Log(
+                "Spotify token exchange failed.",
+                ex,
+                ("Operation", "ExchangeCodeForTokenAsync"),
+                ("RedirectUri", RedirectUri),
+                ("Endpoint", TokenEndpoint));
             return null;
         }
     }
@@ -989,7 +1047,11 @@ public sealed class SpotifyService : ISpotifyService
         }
         catch (Exception ex)
         {
-            Log($"Spotify album art download failed: {ex}");
+            Log(
+                "Spotify album art download failed.",
+                ex,
+                ("Operation", "GetAlbumArtAsync"),
+                ("AlbumArtUrl", albumArtUrl));
             return null;
         }
     }
@@ -1255,10 +1317,45 @@ public sealed class SpotifyService : ISpotifyService
 
     private void Log(string message)
     {
+        AppLogTextWriter.Write("Spotify", message);
+
         try
         {
             Directory.CreateDirectory(AudioBitPaths.LogsDirectoryPath);
             File.AppendAllText(_logFilePath, $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Logging is best effort only.
+        }
+    }
+
+    private void Log(string message, Exception exception, params (string Key, object? Value)[] context)
+    {
+        AppLogTextWriter.Write(
+            "Spotify",
+            message,
+            exception,
+            context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+
+        try
+        {
+            var details = AppLogExceptionFormatter.Format(
+                "Spotify",
+                message,
+                exception,
+                context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+            var entry = new StringBuilder()
+                .Append('[').Append(DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ").AppendLine(message);
+            using var reader = new StringReader(details);
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                entry.Append("    ").AppendLine(line);
+            }
+
+            Directory.CreateDirectory(AudioBitPaths.LogsDirectoryPath);
+            File.AppendAllText(_logFilePath, entry.ToString());
         }
         catch
         {

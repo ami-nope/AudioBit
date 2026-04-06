@@ -14,6 +14,8 @@ public partial class SpotifyWidgetControl : UserControl
 {
     private static readonly Duration AnimationDuration = new(TimeSpan.FromMilliseconds(300));
     private static readonly TimeSpan CollapseDelay = TimeSpan.FromMilliseconds(150);
+    private const double TabCornerRadius = 18;
+    private const double ExpandedPanelCornerRadius = 20;
     private const double CollapsedPanelWidth = 48;
     private const double ExpandedPanelWidth = 280;
     private const double CollapsedPanelShift = 30;
@@ -90,6 +92,7 @@ public partial class SpotifyWidgetControl : UserControl
         Loaded += SpotifyWidgetControl_OnLoaded;
         DataContextChanged += SpotifyWidgetControl_OnDataContextChanged;
         Unloaded += SpotifyWidgetControl_OnUnloaded;
+        SizeChanged += SpotifyWidgetControl_OnSizeChanged;
     }
 
     public bool IsExpanded => WidgetPopup.IsOpen;
@@ -286,6 +289,7 @@ public partial class SpotifyWidgetControl : UserControl
 
     private void SpotifyWidgetControl_OnLoaded(object sender, RoutedEventArgs e)
     {
+        ApplyRoundedShellClips();
         AttachCurrentDataContext();
         UpdatePeakSignal(GetSpotifyLivePeak());
         RefreshVisualizerState(forceReset: true);
@@ -293,10 +297,16 @@ public partial class SpotifyWidgetControl : UserControl
 
     private void SpotifyWidgetControl_OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        ApplyRoundedShellClips();
         DetachCurrentDataContext();
         AttachCurrentDataContext();
         UpdatePeakSignal(GetSpotifyLivePeak());
         RefreshVisualizerState(forceReset: true);
+    }
+
+    private void SpotifyWidgetControl_OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyRoundedShellClips();
     }
 
     private static bool IsDescendantOf(DependencyObject source, DependencyObject ancestor)
@@ -392,6 +402,28 @@ public partial class SpotifyWidgetControl : UserControl
 
         _currentDataContextNotifier.PropertyChanged -= DataContextNotifierOnPropertyChanged;
         _currentDataContextNotifier = null;
+    }
+
+    private void ApplyRoundedShellClips()
+    {
+        ApplyRoundedShellClip(TabSurface, TabCornerRadius);
+        ApplyRoundedShellClip(ExpandedPanel, ExpandedPanelCornerRadius);
+    }
+
+    private static void ApplyRoundedShellClip(FrameworkElement element, double radius)
+    {
+        if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        var clip = new RectangleGeometry(new Rect(0, 0, element.ActualWidth, element.ActualHeight), radius, radius);
+        if (clip.CanFreeze)
+        {
+            clip.Freeze();
+        }
+
+        element.Clip = clip;
     }
 
     private void DataContextNotifierOnPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -1,43 +1,53 @@
-test un command ----- dotnet run --project .\AudioBit.App\AudioBit.App.csproj
-
-.\scripts\Build-ReleaseBundle.ps1
 
 - Add search filtering when many apps appear.
 
 
 - Audio focus mode.
-When a chosen app produces audio, automatically mute others.
+    When a chosen app produces audio, automatically mute others.
 
  
+- push the update AUDIOBIT 2.8   to the website 
+
+- add the discord widget and the spotify widget to the web and android app 
+
+        the discord should be controlled through the relay thing 
+        the spotify should be controlled through spotify api independently 
+
+#FUTURE WIDGET UPDATES 
+
+         # Game Mode Toggle
+
+            One button:
+
+            Lower background volume
+            Boost mic clarity
+            Disable notifications
+            add a mic noise cancellation - maybe through virtual audio but research about existing cleanup 
+            maybe the noise cancellation has options to customise like customise record and hold a specific button which records full and the button holds as the your sound if you want just your sound to be through your mic 
+            then it eliminates all the bg things that appear in the bg and in future too 
+            Microphone tools: noise suppression, monitoring, input level, push-to-talk.
+            Make it actually change system behavior, not just UI.
 
 
-TWO MAIN LOCAL RELEASE COMMANDS
 
-1. Only the custom bootstrap installer folder:
-.\scripts\Build-BootstrapInstaller.ps1
+      # 📞 WhatsApp Desktop
+            Notifications
+            Quick mute sounds
 
-Output:
-artifacts\bootstrap-installer\X.Y\AudioBit-Setup
-
-What it is for:
-- share this folder directly with another laptop or PC
-- install through the custom AudioBit.Setup UI
-- still updater-friendly because the payload is the Velopack portable layout
+            (API is limited—don’t overinvest)
 
 
-2. New GitHub release folder with version bump:
-.\scripts\Build-GitHubReleaseFolder.ps1
+     # NVIDIA INSTANT REPLAY AND SCREENSHOT AND RECORD 
 
-What it does:
-- reads version.json
-- bumps the version by 0.1
-- writes the new version back into version.json
-- creates:
-  artifacts\github-release\NEW_VERSION\GitHub-Upload
-  artifacts\github-release\NEW_VERSION\GitHub-Upload\AudioBit-Setup
-  artifacts\github-release\NEW_VERSION\GitHub-Upload\AudioBit-Setup.zip
-  artifacts\github-release\NEW_VERSION\GitHub-Upload\release-notes-brief.txt
-- keeps the custom installer folder inside the GitHub upload folder
-- also zips that custom installer folder automatically through the command
-- also creates a brief text release note with at least 12 lines
-- keeps both outputs updater-friendly
+     #Bluetooth Fixer 
+            shows your bluetooth devices,the current device the accurate battery level and the connection issues ther is a naming system proper which shows the bluetooth thing make it more better and user friendly 
+
+
+
+    Network / server: VPN state, ping, relay/server health.
+
+
+    Browser media widget: YouTube, YouTube Music, Netflix, Twitch, any active media session.
+
+    (after i make the smartifier ) 
+            Smart home / desk: lights, stream light, fan, desk height if your users do setups.

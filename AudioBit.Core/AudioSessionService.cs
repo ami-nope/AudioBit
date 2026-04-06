@@ -1,9 +1,11 @@
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using AudioBit.Core.Diagnostics;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 using DrawingIcon = System.Drawing.Icon;
@@ -58,6 +60,7 @@ public sealed class AudioSessionService : IDisposable
     private bool _hasPlaybackDevice;
     private bool _hasCaptureDevice;
     private bool _isDefaultCaptureMuted;
+    private float _defaultCapturePeak;
     private float _masterVolume;
     private bool _isMasterMuted;
     private IReadOnlyList<AudioDeviceOptionModel> _renderDeviceOptions = Array.Empty<AudioDeviceOptionModel>();
@@ -159,6 +162,17 @@ public sealed class AudioSessionService : IDisposable
         }
     }
 
+    public float DefaultCapturePeak
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _defaultCapturePeak;
+            }
+        }
+    }
+
     public float MasterVolume
     {
         get
@@ -212,6 +226,8 @@ public sealed class AudioSessionService : IDisposable
         bool hasPlaybackEndpoint;
         string playbackDeviceId;
         string playbackDeviceName;
+        float defaultCapturePeak;
+        bool defaultCaptureMuted;
         float masterVolume;
         bool masterMuted;
         bool hasPlayback;
@@ -224,6 +240,8 @@ public sealed class AudioSessionService : IDisposable
         {
             hasPlaybackEndpoint = false;
         }
+
+        ReadDefaultCaptureState(out defaultCapturePeak, out defaultCaptureMuted);
 
         // Snapshot device state read during CollectLiveGroups.
         lock (_syncRoot)
@@ -244,6 +262,8 @@ public sealed class AudioSessionService : IDisposable
             var now = DateTime.UtcNow;
             var pendingDefaultSwitch = _defaultDeviceChanged;
             var previousPlaybackDeviceId = _currentPlaybackDeviceId;
+            _defaultCapturePeak = defaultCapturePeak;
+            _isDefaultCaptureMuted = defaultCaptureMuted;
 
             if (pendingDefaultSwitch)
             {
@@ -661,7 +681,12 @@ public sealed class AudioSessionService : IDisposable
         }
         catch (Exception ex)
         {
-            RouteLog($"SetSystemDefaultDevice failed: flow={flow} deviceId='{deviceId}' error={ex.Message}");
+            RouteLog(
+                $"SetSystemDefaultDevice failed: flow={flow} deviceId='{deviceId}'",
+                ex,
+                ("Operation", "SetSystemDefaultDevice"),
+                ("Flow", flow),
+                ("DeviceId", deviceId));
             return false;
         }
     }
@@ -708,7 +733,11 @@ public sealed class AudioSessionService : IDisposable
         }
         catch (Exception ex)
         {
-            RouteLog($"CollectLiveGroups default device error: {ex.GetType().Name}: {ex.Message}");
+            RouteLog(
+                "CollectLiveGroups default device enumeration failed.",
+                ex,
+                ("Operation", "CollectLiveGroups"),
+                ("DeviceKind", "DefaultRender"));
             _hasPlaybackDevice = false;
             _currentPlaybackDeviceId = string.Empty;
             _currentDeviceName = "No playback device";
@@ -739,7 +768,11 @@ public sealed class AudioSessionService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    RouteLog($"CollectLiveGroups non-default device error: {ex.GetType().Name}: {ex.Message}");
+                    RouteLog(
+                        "CollectLiveGroups non-default device enumeration failed.",
+                        ex,
+                        ("Operation", "CollectLiveGroups"),
+                        ("DeviceKind", "NonDefaultRender"));
                 }
                 finally
                 {
@@ -1396,6 +1429,32 @@ public sealed class AudioSessionService : IDisposable
             AudioDeviceFlow.Capture);
     }
 
+    private void ReadDefaultCaptureState(out float peak, out bool isMuted)
+    {
+        peak = 0.0f;
+        isMuted = false;
+
+        MMDevice? defaultCaptureDevice = null;
+        try
+        {
+            defaultCaptureDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+            isMuted = SafeRead(() => defaultCaptureDevice.AudioEndpointVolume.Mute, false);
+            var rawPeak = SafeRead(() => defaultCaptureDevice.AudioMeterInformation.MasterPeakValue, 0.0f);
+            peak = isMuted
+                ? 0.0f
+                : ShapeResponsivePeak(Math.Clamp(rawPeak, 0.0f, 1.0f));
+        }
+        catch
+        {
+            peak = 0.0f;
+            isMuted = false;
+        }
+        finally
+        {
+            defaultCaptureDevice?.Dispose();
+        }
+    }
+
     private void RefreshDeviceRoutes(HashSet<int> visibleProcessIds, DateTime now)
     {
         foreach (var processId in visibleProcessIds)
@@ -1725,11 +1784,46 @@ public sealed class AudioSessionService : IDisposable
 
     private static void RouteLog(string message)
     {
+        AppLogTextWriter.Write("AudioRouting", message);
+
         try
         {
             var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
             var logPath = Path.Combine(AppContext.BaseDirectory, "audiobit-route.log");
             File.AppendAllText(logPath, line + Environment.NewLine);
+        }
+        catch
+        {
+            // Don't let logging failures break routing.
+        }
+    }
+
+    private static void RouteLog(string message, Exception exception, params (string Key, object? Value)[] context)
+    {
+        AppLogTextWriter.Write(
+            "AudioRouting",
+            message,
+            exception,
+            context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+
+        try
+        {
+            var details = AppLogExceptionFormatter.Format(
+                "AudioRouting",
+                message,
+                exception,
+                context: context.Select(item => new KeyValuePair<string, object?>(item.Key, item.Value)));
+            var entry = new System.Text.StringBuilder()
+                .Append('[').Append(DateTimeOffset.Now.ToString("O")).Append("] ").AppendLine(message);
+            using var reader = new StringReader(details);
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                entry.Append("    ").AppendLine(line);
+            }
+
+            var logPath = Path.Combine(AppContext.BaseDirectory, "audiobit-route.log");
+            File.AppendAllText(logPath, entry.ToString());
         }
         catch
         {
