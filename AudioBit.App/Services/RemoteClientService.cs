@@ -53,7 +53,6 @@ internal sealed class RemoteClientService : IDisposable
     private Task? _stateLoopTask;
     private Task? _meterLoopTask;
     private bool _disposed;
-    private bool _autoReconnectEnabled = true;
     private bool _helloCompleted;
     private int _consecutiveConnectionFailures;
     private RemoteSessionInfo _sessionInfo = RemoteSessionInfo.Empty;
@@ -156,11 +155,6 @@ internal sealed class RemoteClientService : IDisposable
         _connectionLoopTask = Task.Run(() => RunConnectionLoopAsync(_lifetimeCts.Token));
         _stateLoopTask = Task.Run(() => RunStateLoopAsync(_lifetimeCts.Token));
         _meterLoopTask = Task.Run(() => RunMeterLoopAsync(_lifetimeCts.Token));
-    }
-
-    public void SetAutoReconnect(bool enabled)
-    {
-        _autoReconnectEnabled = enabled;
     }
 
     public async Task RefreshPairingSessionAsync(CancellationToken cancellationToken = default)
@@ -369,12 +363,6 @@ internal sealed class RemoteClientService : IDisposable
 
             try
             {
-                if (!_autoReconnectEnabled)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
-
                 bool forceSessionCreate;
                 lock (_syncRoot)
                 {
@@ -426,7 +414,7 @@ internal sealed class RemoteClientService : IDisposable
                     clearConnectedDevice: true);
             }
 
-            if (!cancellationToken.IsCancellationRequested && _autoReconnectEnabled)
+            if (!cancellationToken.IsCancellationRequested)
             {
                 if (shouldFailover)
                 {

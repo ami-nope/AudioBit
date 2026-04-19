@@ -1,4 +1,5 @@
 using System.IO;
+using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -20,6 +21,7 @@ internal sealed class GoogleSheetsLogSyncService : IDisposable
     private static readonly TimeSpan ErrorContextCooldown = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeZoneInfo IndiaStandardTimeZone = ResolveIndiaStandardTimeZone();
     private static readonly object FileGate = new();
 
     private readonly HttpClient _httpClient;
@@ -345,7 +347,7 @@ internal sealed class GoogleSheetsLogSyncService : IDisposable
             DeviceId,
             _appVersion,
             "single",
-            entry.TimestampUtc.ToString("O"),
+            FormatTimestampForGoogleSheets(entry.TimestampUtc),
             entry.SequenceId,
             entry.Level.ToString(),
             entry.Category,
@@ -366,7 +368,7 @@ internal sealed class GoogleSheetsLogSyncService : IDisposable
     {
         var exportedEntries = entries
             .Select(entry => new GoogleSheetsLogEntry(
-                entry.TimestampUtc.ToString("O"),
+                FormatTimestampForGoogleSheets(entry.TimestampUtc),
                 entry.SequenceId,
                 entry.Level.ToString(),
                 entry.Category,
@@ -380,7 +382,7 @@ internal sealed class GoogleSheetsLogSyncService : IDisposable
             DeviceId,
             _appVersion,
             kind,
-            DateTimeOffset.UtcNow.ToString("O"),
+            FormatTimestampForGoogleSheets(DateTimeOffset.UtcNow),
             entries.Count == 0 ? 0 : entries[^1].SequenceId,
             level.ToString(),
             category,
@@ -482,6 +484,35 @@ internal sealed class GoogleSheetsLogSyncService : IDisposable
         }
 
         return ResolveDeviceName();
+    }
+
+    private static string FormatTimestampForGoogleSheets(DateTimeOffset timestamp)
+    {
+        var indiaTimestamp = TimeZoneInfo.ConvertTime(timestamp, IndiaStandardTimeZone);
+        return indiaTimestamp.ToString("dd-MMM-yy || hh:mm tt", CultureInfo.InvariantCulture);
+    }
+
+    private static TimeZoneInfo ResolveIndiaStandardTimeZone()
+    {
+        foreach (var timeZoneId in new[] { "India Standard Time", "Asia/Kolkata" })
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return TimeZoneInfo.CreateCustomTimeZone(
+            "AudioBit.IndiaStandardTime",
+            TimeSpan.FromMinutes(330),
+            "(UTC+05:30) India Standard Time",
+            "India Standard Time");
     }
 
     private static string SanitizeSheetName(string? value)

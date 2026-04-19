@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls.Primitives;
@@ -15,7 +14,6 @@ using AudioBit.Core;
 using AudioBit.Core.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
 
 namespace AudioBit.App.ViewModels;
 
@@ -100,15 +98,12 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     private bool _isDarkTheme = true;
     private bool _openOnStartup;
     private bool _startMinimized;
-    private bool _autoReconnectRemote = true;
     private bool _runAsBackgroundService = true;
     private CloseButtonBehavior _closeButtonBehavior = CloseButtonBehavior.Exit;
     private string _defaultPlaybackDeviceId = string.Empty;
     private string _defaultMicrophoneDeviceId = string.Empty;
     private string _micMuteHotKey = "Ctrl + Shift + M";
     private int _volumeStepPercent = 5;
-    private bool _autoMuteMicOnSoundboard;
-    private bool _debugMode;
     private bool _isAdvancedSettingsOpen;
     private bool _isResetConfirmationVisible;
     private bool _isCapturingMicMuteHotKey;
@@ -224,9 +219,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ShowResetConfirmationCommand = new RelayCommand(() => IsResetConfirmationVisible = true);
         CancelResetConfirmationCommand = new RelayCommand(() => IsResetConfirmationVisible = false);
         ConfirmResetSettingsCommand = new RelayCommand(ResetSettings);
-        ExportProfilesCommand = new RelayCommand(ExportProfiles);
-        ImportProfilesCommand = new RelayCommand(ImportProfiles);
-        OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
         ExportRecentLogsToGoogleSheetsCommand = new AsyncRelayCommand(ExportRecentLogsToGoogleSheetsAsync);
         RefreshRemotePairingCommand = new AsyncRelayCommand(RefreshRemotePairingAsync);
         GenerateRemoteQrCodeCommand = new RelayCommand(GenerateRemoteQrCode, CanGenerateRemoteQrCode);
@@ -266,7 +258,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         ApplySettingsSnapshot(_appSettingsStore.Load(), persistToDisk: false);
         ApplyRemoteSessionInfo(_remoteClientService.SessionInfo);
         ApplyAppUpdateStatus(_appUpdaterService.CurrentStatus);
-        _remoteClientService.SetAutoReconnect(AutoReconnectRemote);
         _remoteClientService.Start();
     }
 
@@ -333,12 +324,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public IRelayCommand CancelResetConfirmationCommand { get; }
 
     public IRelayCommand ConfirmResetSettingsCommand { get; }
-
-    public IRelayCommand ExportProfilesCommand { get; }
-
-    public IRelayCommand ImportProfilesCommand { get; }
-
-    public IRelayCommand OpenLogFolderCommand { get; }
 
     public IAsyncRelayCommand ExportRecentLogsToGoogleSheetsCommand { get; }
 
@@ -938,21 +923,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool AutoReconnectRemote
-    {
-        get => _autoReconnectRemote;
-        set
-        {
-            if (!SetProperty(ref _autoReconnectRemote, value))
-            {
-                return;
-            }
-
-            _remoteClientService.SetAutoReconnect(value);
-            PersistSettingsIfReady();
-        }
-    }
-
     public bool RunAsBackgroundService
     {
         get => _runAsBackgroundService;
@@ -1076,34 +1046,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
     public string VolumeStepKey => VolumeStepPercent.ToString();
 
     public double VolumeStepValue => VolumeStepPercent / 100.0;
-
-    public bool AutoMuteMicOnSoundboard
-    {
-        get => _autoMuteMicOnSoundboard;
-        set
-        {
-            if (!SetProperty(ref _autoMuteMicOnSoundboard, value))
-            {
-                return;
-            }
-
-            PersistSettingsIfReady();
-        }
-    }
-
-    public bool DebugMode
-    {
-        get => _debugMode;
-        set
-        {
-            if (!SetProperty(ref _debugMode, value))
-            {
-                return;
-            }
-
-            PersistSettingsIfReady();
-        }
-    }
 
     public bool SpotifyWidgetEnabled
     {
@@ -2074,78 +2016,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         IsResetConfirmationVisible = false;
     }
 
-    private void ExportProfiles()
-    {
-        try
-        {
-            var dialog = new SaveFileDialog
-            {
-                AddExtension = true,
-                DefaultExt = ".json",
-                Filter = "AudioBit Settings (*.json)|*.json|All Files (*.*)|*.*",
-                FileName = "AudioBit-settings.json",
-            };
-
-            if (dialog.ShowDialog() != true)
-            {
-                return;
-            }
-
-            _appSettingsStore.SaveTo(dialog.FileName, CreateSettingsSnapshot());
-            AppLog.Info("MainViewModel", $"Settings exported to '{dialog.FileName}'.");
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error("MainViewModel", "Unable to export settings.", ex);
-            MessageBox.Show($"Unable to export settings.\n\n{ex.Message}", "AudioBit", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void ImportProfiles()
-    {
-        try
-        {
-            var dialog = new OpenFileDialog
-            {
-                CheckFileExists = true,
-                Filter = "AudioBit Settings (*.json)|*.json|All Files (*.*)|*.*",
-            };
-
-            if (dialog.ShowDialog() != true)
-            {
-                return;
-            }
-
-            var importedSnapshot = _appSettingsStore.LoadFrom(dialog.FileName);
-            ApplySettingsSnapshot(importedSnapshot, persistToDisk: true);
-            AppLog.Info("MainViewModel", $"Settings imported from '{dialog.FileName}'.");
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error("MainViewModel", "Unable to import settings.", ex);
-            MessageBox.Show($"Unable to import settings.\n\n{ex.Message}", "AudioBit", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void OpenLogFolder()
-    {
-        try
-        {
-            Directory.CreateDirectory(AudioBitPaths.LogsDirectoryPath);
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = AudioBitPaths.LogsDirectoryPath,
-                UseShellExecute = true,
-            });
-            AppLog.Info("MainViewModel", $"Opened log folder '{AudioBitPaths.LogsDirectoryPath}'.");
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error("MainViewModel", "Unable to open log folder.", ex);
-            MessageBox.Show($"Unable to open the log folder.\n\n{ex.Message}", "AudioBit", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
     private async Task ExportRecentLogsToGoogleSheetsAsync()
     {
         try
@@ -2902,7 +2772,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             OpenOnStartup = snapshot.OpenOnStartup;
             HideToTrayOnMinimize = snapshot.HideToTrayOnMinimize;
             StartMinimized = snapshot.StartMinimized;
-            AutoReconnectRemote = snapshot.AutoReconnectRemote;
             RunAsBackgroundService = snapshot.RunAsBackgroundService;
             IsAlwaysOnTop = snapshot.IsAlwaysOnTop;
             ShowAlwaysOnTopPin = snapshot.ShowAlwaysOnTopPin;
@@ -2912,8 +2781,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             DefaultMicrophoneDeviceId = snapshot.DefaultMicrophoneDeviceId;
             MicMuteHotKey = snapshot.MicMuteHotKey;
             VolumeStepPercent = snapshot.VolumeStepPercent;
-            AutoMuteMicOnSoundboard = snapshot.AutoMuteMicOnSoundboard;
-            DebugMode = snapshot.DebugMode;
             IsDarkTheme = snapshot.IsDarkTheme;
             SpotifyWidgetEnabled = snapshot.SpotifyWidgetEnabled;
             DiscordWidgetEnabled = snapshot.DiscordWidgetEnabled;
@@ -2953,7 +2820,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             OpenOnStartup = OpenOnStartup,
             HideToTrayOnMinimize = HideToTrayOnMinimize,
             StartMinimized = StartMinimized,
-            AutoReconnectRemote = AutoReconnectRemote,
             RunAsBackgroundService = RunAsBackgroundService,
             IsAlwaysOnTop = IsAlwaysOnTop,
             ShowAlwaysOnTopPin = ShowAlwaysOnTopPin,
@@ -2963,8 +2829,6 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             DefaultMicrophoneDeviceId = DefaultMicrophoneDeviceId,
             MicMuteHotKey = MicMuteHotKey,
             VolumeStepPercent = VolumeStepPercent,
-            AutoMuteMicOnSoundboard = AutoMuteMicOnSoundboard,
-            DebugMode = DebugMode,
             IsDarkTheme = IsDarkTheme,
             SpotifyWidgetEnabled = SpotifyWidgetEnabled,
             DiscordWidgetEnabled = DiscordWidgetEnabled,

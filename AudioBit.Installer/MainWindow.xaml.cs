@@ -1,14 +1,18 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using AudioBit.Core;
 using Forms = System.Windows.Forms;
 
 namespace AudioBit.Installer;
@@ -27,6 +31,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const double ShellClipInset = 1.0;
 
     private readonly InstallerEngine _installerEngine;
+    private readonly InstallerMetadataService _metadataService = new();
     private readonly InstallerMode _mode;
     private bool _canInstall = true;
     private bool _canLaunch;
@@ -44,6 +49,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _progressValue;
     private string _progressPercentText = "0%";
     private string _statusText = string.Empty;
+    private string _latestVersionText = "Loading...";
+    private string _metadataFootnoteText = "Version syncs from GitHub. Website metrics load when the site is reachable.";
+    private string _metadataStatusText = "Fetching live metadata";
+    private double? _websiteRatingValue;
+    private int? _websiteRatingCount;
+    private int? _websiteStarsCount;
 
     public MainWindow(InstallerMode mode, string? installPath = null)
     {
@@ -82,6 +93,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 OnPropertyChanged(nameof(CanRunPrimaryAction));
                 OnPropertyChanged(nameof(ShowReturnToOptionsButton));
                 OnPropertyChanged(nameof(ProgressTitleText));
+                OnPropertyChanged(nameof(CanUseProgressSecondaryAction));
+                OnPropertyChanged(nameof(ShowProgressSecondaryActionButton));
+                OnPropertyChanged(nameof(ShowProgressStatusPill));
+                OnPropertyChanged(nameof(ProgressSecondaryActionText));
+                OnPropertyChanged(nameof(ProgressStatusPillText));
             }
         }
     }
@@ -95,6 +111,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(ShowLaunchButton));
                 OnPropertyChanged(nameof(ShowReturnToOptionsButton));
+                OnPropertyChanged(nameof(CanUseProgressSecondaryAction));
+                OnPropertyChanged(nameof(ShowProgressSecondaryActionButton));
+                OnPropertyChanged(nameof(ShowProgressStatusPill));
+                OnPropertyChanged(nameof(ProgressSecondaryActionText));
             }
         }
     }
@@ -148,12 +168,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 OnPropertyChanged(nameof(CanProceedFromLocation));
                 OnPropertyChanged(nameof(CanRunPrimaryAction));
                 OnPropertyChanged(nameof(InstallPathBadgeText));
+                OnPropertyChanged(nameof(InstallFolderHeaderText));
                 RefreshState();
             }
         }
     }
 
     public string InstallPathBadgeText => IsDefaultInstallPath() ? "DEFAULT FOLDER" : "CUSTOM FOLDER";
+
+    public string InstallFolderHeaderText => IsDefaultInstallPath() ? "Default Folder" : "Custom Folder";
 
     public bool IsInstallMode => _mode == InstallerMode.Install;
 
@@ -170,6 +193,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
     }
+
+    public string HeaderModeText => IsInstallMode ? "Install" : "Uninstall";
+
+    public string HeaderTitleText => "Audiobit";
 
     public string ModeHeadline => IsInstallMode ? "AudioBit Setup" : "AudioBit Uninstall";
 
@@ -193,6 +220,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         private set => SetProperty(ref _payloadSummaryText, value);
     }
 
+    public string LatestVersionText
+    {
+        get => _latestVersionText;
+        private set
+        {
+            if (SetProperty(ref _latestVersionText, value))
+            {
+                OnPropertyChanged(nameof(VersionLineText));
+            }
+        }
+    }
+
+    public string MetadataFootnoteText
+    {
+        get => _metadataFootnoteText;
+        private set => SetProperty(ref _metadataFootnoteText, value);
+    }
+
+    public string MetadataStatusText
+    {
+        get => _metadataStatusText;
+        private set => SetProperty(ref _metadataStatusText, value);
+    }
+
     public string PhaseText
     {
         get => _phaseText;
@@ -201,6 +252,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (SetProperty(ref _phaseText, value))
             {
                 OnPropertyChanged(nameof(ProgressTitleText));
+                OnPropertyChanged(nameof(ProgressStatusPillText));
             }
         }
     }
@@ -245,6 +297,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (SetProperty(ref _progressValue, value))
             {
                 OnPropertyChanged(nameof(RemainingProgressValue));
+                OnPropertyChanged(nameof(MainBarPercentLabelText));
+                OnPropertyChanged(nameof(ProgressLaneOnePercentText));
+                OnPropertyChanged(nameof(ProgressLaneTwoPercentText));
+                OnPropertyChanged(nameof(ProgressLaneThreePercentText));
+                OnPropertyChanged(nameof(ProgressLaneFourPercentText));
+                OnPropertyChanged(nameof(ProgressLaneFivePercentText));
             }
         }
     }
@@ -255,9 +313,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         private set => SetProperty(ref _progressPercentText, value);
     }
 
-    public string ProgressBarLabelText => IsInstallMode ? "Install progress" : "Removal progress";
+    public string ProgressBarLabelText => IsInstallMode ? "Install Progress" : "Removal Progress";
+
+    public string MainBarPercentLabelText => ProgressPercentText;
 
     public string ProgressStepTag => IsInstallMode ? "STEP 3 OF 3" : "UNINSTALL";
+
+    public string ProgressLaneOneTitle => IsInstallMode ? "Preparing Installation..." : "Stopping processes...";
+
+    public string ProgressLaneTwoTitle => IsInstallMode ? "Extracting files..." : "Removing shortcuts...";
+
+    public string ProgressLaneThreeTitle => IsInstallMode ? "Installing components..." : "Deleting files...";
+
+    public string ProgressLaneFourTitle => IsInstallMode ? "Verifying installation..." : "Cleaning registry...";
+
+    public string ProgressLaneFiveTitle => IsInstallMode ? "Finalising Setup..." : "Finishing cleanup...";
+
+    public string ProgressLaneOnePercentText => FormatLanePercent(GetLaneVisualPercent(0.6));
+
+    public string ProgressLaneTwoPercentText => FormatLanePercent(GetLaneVisualPercent(1.4));
+
+    public string ProgressLaneThreePercentText => FormatLanePercent(GetLaneVisualPercent(0.8));
+
+    public string ProgressLaneFourPercentText => FormatLanePercent(GetLaneVisualPercent(0.5));
+
+    public string ProgressLaneFivePercentText => FormatLanePercent(GetLaneVisualPercent(0.2));
 
     public string ProgressTitleText
     {
@@ -265,20 +345,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (string.Equals(PhaseText, "FAILED", StringComparison.OrdinalIgnoreCase))
             {
-                return IsInstallMode ? "Setup needs attention" : "Removal needs attention";
+                return IsInstallMode ? "Installing Audiobit" : "Removing Audiobit";
             }
 
             if (_closeOnPrimaryAction)
             {
-                return IsInstallMode ? "AudioBit is ready" : "AudioBit has been removed";
+                return IsInstallMode ? "Audiobit Installed" : "Audiobit Removed";
             }
 
-            if (!CanInstall)
-            {
-                return IsInstallMode ? "Installing AudioBit" : "Removing AudioBit";
-            }
-
-            return IsInstallMode ? "Preparing AudioBit setup" : "Ready to remove AudioBit";
+            return IsInstallMode ? "Installing Audiobit" : "Removing Audiobit";
         }
     }
 
@@ -336,6 +411,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public bool ShowProgressStep => IsUninstallMode || _currentStep == InstallerStep.Progress;
 
+    public bool ShowProgressSecondaryActionButton => ShowLaunchButton || ShowReturnToOptionsButton;
+
+    public bool ShowProgressStatusPill => !ShowProgressSecondaryActionButton;
+
     public bool ShowReturnToOptionsButton =>
         IsInstallMode &&
         ShowProgressStep &&
@@ -343,11 +422,86 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         !_closeOnPrimaryAction &&
         !CanLaunch;
 
+    public bool CanUseProgressSecondaryAction => ShowProgressStep;
+
+    public string ProgressSecondaryActionText
+    {
+        get
+        {
+            if (ShowLaunchButton)
+            {
+                return "Launch";
+            }
+
+            if (!CanInstall && !_closeOnPrimaryAction)
+            {
+                return "Cancel";
+            }
+
+            if (ShowReturnToOptionsButton)
+            {
+                return "Back";
+            }
+
+            return "Close";
+        }
+    }
+
+    public string ProgressStatusPillText => _closeOnPrimaryAction ? "Done" : PhaseText;
+
     public string StatusText
     {
         get => _statusText;
         private set => SetProperty(ref _statusText, value);
     }
+
+    public string WebsiteDisplayText => "audiobit.amii.lol";
+
+    public string GitHubDisplayText => "@ami-nope";
+
+    public string PublisherLineText => "Publisher : Ami";
+
+    public string VersionLineText => $"Version : {LatestVersionText}";
+
+    public string SourceLineText => "Source : Github Releases";
+
+    public string RatingCountDisplayText =>
+        _websiteRatingCount.HasValue
+            ? $"{Math.Max(_websiteRatingCount.Value, 0):00} RATINGS"
+            : "00 RATINGS";
+
+    public string RatingDisplayText =>
+        _websiteRatingValue.HasValue
+            ? _websiteRatingValue.Value.ToString("0.0", CultureInfo.InvariantCulture)
+            : "--";
+
+    public string RatingStarsText => BuildRatingStars(_websiteRatingValue);
+
+    public string RatingStarsDisplayText => BuildVisibleRatingStars(_websiteRatingValue);
+
+    public string LanguageText => "EN";
+
+    public string OptionsPrimaryActionText => IsInstallMode ? "Next" : "Remove";
+
+    public string GitHubLinkToolTipText =>
+        _websiteStarsCount.HasValue
+            ? $"{InstallerMetadataService.GitHubProfileUrl} | {_websiteStarsCount.Value:n0} stars"
+            : InstallerMetadataService.GitHubProfileUrl;
+
+    public string WebsiteLinkToolTipText =>
+        _websiteRatingValue.HasValue
+            ? $"{WebsiteDisplayText} | {RatingDisplayText}/5"
+            : WebsiteDisplayText;
+
+    public string GitHubButtonToolTipText =>
+        _websiteStarsCount.HasValue
+            ? $"{InstallerMetadataService.GitHubProfileUrl} • {_websiteStarsCount.Value:n0} stars"
+            : InstallerMetadataService.GitHubProfileUrl;
+
+    public string WebsiteButtonToolTipText =>
+        _websiteRatingValue.HasValue
+            ? $"{WebsiteDisplayText} • {RatingDisplayText}/5"
+            : WebsiteDisplayText;
 
     [DllImport("gdi32.dll", SetLastError = true)]
     private static extern IntPtr CreateRoundRectRgn(
@@ -365,10 +519,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DeleteObject(IntPtr hObject);
 
-    private void MainWindowOnLoaded(object sender, RoutedEventArgs e)
+    private async void MainWindowOnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyRoundedWindowRegion();
         ApplyRoundedVisualClips();
+        AnimateProgressVisuals(true);
+        await LoadMetadataAsync();
     }
 
     private void MainWindowOnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -391,6 +547,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void MainWindowOnStateChanged(object? sender, EventArgs e)
     {
         ApplyRoundedWindowRegion();
+    }
+
+    private async Task LoadMetadataAsync()
+    {
+        try
+        {
+            var snapshot = await _metadataService.LoadAsync();
+            LatestVersionText = snapshot.LatestVersionText;
+            SetWebsiteStats(snapshot.RatingValue, snapshot.RatingCount, snapshot.StarsCount);
+            MetadataStatusText = snapshot.StatusText;
+            MetadataFootnoteText = snapshot.StatusText switch
+            {
+                "Live website stats" => "Version syncs from GitHub releases. Rating and stars are pulled from audiobit.amii.lol.",
+                "Website unavailable, using GitHub stars" => "Version syncs from GitHub releases. The website was unavailable, so the star count fell back to GitHub.",
+                _ => "Version syncs from GitHub releases. Website metrics could not be loaded on this network."
+            };
+        }
+        catch (Exception ex)
+        {
+            InstallerLogger.Log($"Installer metadata load failed: {ex}");
+            LatestVersionText = AppVersionInfo.GetDisplayVersion(GetType().Assembly);
+            SetWebsiteStats(null, null, null);
+            MetadataStatusText = "Metadata unavailable";
+            MetadataFootnoteText = "GitHub releases and website stats could not be reached.";
+        }
     }
 
     private void ProceedButton_Click(object sender, RoutedEventArgs e)
@@ -459,9 +640,42 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Close();
     }
 
+    private void GitHubButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenExternalUrl(InstallerMetadataService.GitHubProfileUrl);
+    }
+
+    private void WebsiteButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenExternalUrl(InstallerMetadataService.WebsiteUrl);
+    }
+
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         TryBeginWindowDrag(e);
+    }
+
+    private void ProgressSecondaryButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ShowLaunchButton)
+        {
+            TryLaunchInstalledApp(false);
+            return;
+        }
+
+        if (!CanInstall && !_closeOnPrimaryAction)
+        {
+            SetStatus("RUNNING", "Cancellation is not available once setup starts.");
+            return;
+        }
+
+        if (ShowReturnToOptionsButton)
+        {
+            BackButton_Click(sender, e);
+            return;
+        }
+
+        Close();
     }
 
     private async void InstallButton_Click(object sender, RoutedEventArgs e)
@@ -484,7 +698,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         CanInstall = false;
         CanLaunch = false;
-        InstallButtonText = IsInstallMode ? "Installing..." : "Removing...";
+        InstallButtonText = IsInstallMode ? "Installing...." : "Removing....";
         SetProgress(
             "PREPARING",
             IsInstallMode ? "Starting the AudioBit install." : "Starting the AudioBit uninstall.",
@@ -507,6 +721,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _closeOnPrimaryAction = true;
                 CanLaunch = true;
                 InstallButtonText = "Close";
+                NotifyProgressPresentationChanged();
                 SetProgress("COMPLETE", "AudioBit was installed successfully and registered with Windows.", 100);
 
                 if (LaunchAfterInstall)
@@ -519,6 +734,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 await _installerEngine.UninstallAsync(InstallPath, progress);
                 _closeOnPrimaryAction = true;
                 InstallButtonText = "Close";
+                NotifyProgressPresentationChanged();
                 SetProgress("COMPLETE", "AudioBit was removed from Windows successfully.", 100);
             }
         }
@@ -534,6 +750,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             RefreshPayloadSummary();
             OnPropertyChanged(nameof(ShowLaunchButton));
             OnPropertyChanged(nameof(ShowReturnToOptionsButton));
+            OnPropertyChanged(nameof(ShowProgressSecondaryActionButton));
+            OnPropertyChanged(nameof(ShowProgressStatusPill));
+            OnPropertyChanged(nameof(CanUseProgressSecondaryAction));
+            OnPropertyChanged(nameof(ProgressSecondaryActionText));
+            OnPropertyChanged(nameof(ProgressStatusPillText));
         }
     }
 
@@ -620,6 +841,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Directory.Exists(InstallPath) || File.Exists(installedExecutable)
                 ? "AudioBit is ready to be removed from Windows."
                 : "Installed files were not found, but Windows registration and shell entries can still be cleaned up.");
+
+        OnPropertyChanged(nameof(CanUseProgressSecondaryAction));
+        OnPropertyChanged(nameof(ShowProgressSecondaryActionButton));
+        OnPropertyChanged(nameof(ShowProgressStatusPill));
+        OnPropertyChanged(nameof(ProgressSecondaryActionText));
+        OnPropertyChanged(nameof(ProgressStatusPillText));
     }
 
     private void SetCurrentStep(InstallerStep step)
@@ -635,6 +862,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         OnPropertyChanged(nameof(ShowProgressStep));
         OnPropertyChanged(nameof(ShowLaunchButton));
         OnPropertyChanged(nameof(ShowReturnToOptionsButton));
+        OnPropertyChanged(nameof(CanUseProgressSecondaryAction));
+        OnPropertyChanged(nameof(ShowProgressSecondaryActionButton));
+        OnPropertyChanged(nameof(ShowProgressStatusPill));
+        OnPropertyChanged(nameof(ProgressSecondaryActionText));
+        OnPropertyChanged(nameof(ProgressStatusPillText));
     }
 
     private void SetProgress(string phase, string status, double percent)
@@ -643,6 +875,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StatusText = status;
         ProgressValue = Math.Clamp(percent, 0, 100);
         ProgressPercentText = $"{Math.Round(ProgressValue):0}%";
+        AnimateProgressVisuals();
     }
 
     private void SetStatus(string phase, string status)
@@ -738,6 +971,153 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             // Ignore drag requests from transient mouse states.
         }
+    }
+
+    private void OpenExternalUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            InstallerLogger.Log($"Failed to open external URL '{url}': {ex}");
+            SetStatus("LINK FAILED", "Windows could not open the requested link.");
+        }
+    }
+
+    private void AnimateProgressVisuals(bool immediate = false)
+    {
+        if (MainProgressFill is null
+            || LaneOneFill is null
+            || LaneTwoFill is null
+            || LaneThreeFill is null
+            || LaneFourFill is null
+            || LaneFiveFill is null)
+        {
+            return;
+        }
+
+        var mainValue = ProgressValue / 100d;
+        var laneOne = GetLaneVisualPercent(0.6) / 100d;
+        var laneTwo = GetLaneVisualPercent(1.4) / 100d;
+        var laneThree = GetLaneVisualPercent(0.8) / 100d;
+        var laneFour = GetLaneVisualPercent(0.5) / 100d;
+        var laneFive = GetLaneVisualPercent(0.2) / 100d;
+
+        SetFillScale(MainProgressFill, mainValue, immediate);
+        SetFillScale(LaneOneFill, laneOne, immediate);
+        SetFillScale(LaneTwoFill, laneTwo, immediate);
+        SetFillScale(LaneThreeFill, laneThree, immediate);
+        SetFillScale(LaneFourFill, laneFour, immediate);
+        SetFillScale(LaneFiveFill, laneFive, immediate);
+    }
+
+    private double GetLaneVisualPercent(double multiplier)
+    {
+        if (_closeOnPrimaryAction || string.Equals(PhaseText, "COMPLETE", StringComparison.OrdinalIgnoreCase))
+        {
+            return 100;
+        }
+
+        var percent = ProgressValue * multiplier;
+        if (string.Equals(PhaseText, "FAILED", StringComparison.OrdinalIgnoreCase))
+        {
+            percent = Math.Max(percent, 8);
+        }
+
+        return Math.Clamp(Math.Round(percent), 0, 100);
+    }
+
+    private static string FormatLanePercent(double percent)
+    {
+        return $"{Math.Round(percent):0} %";
+    }
+
+    private void SetWebsiteStats(double? ratingValue, int? ratingCount, int? starsCount)
+    {
+        _websiteRatingValue = ratingValue;
+        _websiteRatingCount = ratingCount;
+        _websiteStarsCount = starsCount;
+
+        OnPropertyChanged(nameof(RatingCountDisplayText));
+        OnPropertyChanged(nameof(RatingDisplayText));
+        OnPropertyChanged(nameof(RatingStarsText));
+        OnPropertyChanged(nameof(RatingStarsDisplayText));
+        OnPropertyChanged(nameof(GitHubButtonToolTipText));
+        OnPropertyChanged(nameof(WebsiteButtonToolTipText));
+        OnPropertyChanged(nameof(GitHubLinkToolTipText));
+        OnPropertyChanged(nameof(WebsiteLinkToolTipText));
+    }
+
+    private void NotifyProgressPresentationChanged()
+    {
+        OnPropertyChanged(nameof(ProgressTitleText));
+        OnPropertyChanged(nameof(ProgressSecondaryActionText));
+        OnPropertyChanged(nameof(ProgressStatusPillText));
+        OnPropertyChanged(nameof(ProgressLaneOnePercentText));
+        OnPropertyChanged(nameof(ProgressLaneTwoPercentText));
+        OnPropertyChanged(nameof(ProgressLaneThreePercentText));
+        OnPropertyChanged(nameof(ProgressLaneFourPercentText));
+        OnPropertyChanged(nameof(ProgressLaneFivePercentText));
+    }
+
+    private static string BuildVisibleRatingStars(double? ratingValue)
+    {
+        const string filledStar = "\u2605";
+        const string emptyStar = "\u2606";
+
+        if (!ratingValue.HasValue)
+        {
+            return string.Join(" ", Enumerable.Repeat(emptyStar, 5));
+        }
+
+        var filledStars = Math.Clamp((int)Math.Round(ratingValue.Value, MidpointRounding.AwayFromZero), 0, 5);
+        var stars = Enumerable
+            .Repeat(filledStar, filledStars)
+            .Concat(Enumerable.Repeat(emptyStar, 5 - filledStars));
+        return string.Join(" ", stars);
+    }
+
+    private static string BuildRatingStars(double? ratingValue)
+    {
+        if (!ratingValue.HasValue)
+        {
+            return "☆☆☆☆☆";
+        }
+
+        var filledStars = Math.Clamp((int)Math.Round(ratingValue.Value, MidpointRounding.AwayFromZero), 0, 5);
+        return string.Concat(new string('★', filledStars), new string('☆', 5 - filledStars));
+    }
+
+    private static void SetFillScale(Border border, double scale, bool immediate)
+    {
+        if (border.RenderTransform is not ScaleTransform transform)
+        {
+            return;
+        }
+
+        var target = Math.Clamp(scale, 0, 1);
+        if (immediate)
+        {
+            transform.ScaleX = target;
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            To = target,
+            Duration = TimeSpan.FromMilliseconds(240),
+            EasingFunction = new QuadraticEase
+            {
+                EasingMode = EasingMode.EaseOut
+            }
+        };
+
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
     private void OnOptionSelectionChanged()

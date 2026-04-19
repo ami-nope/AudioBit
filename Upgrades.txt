@@ -4,14 +4,21 @@
 
 - Audio focus mode.
     When a chosen app produces audio, automatically mute others.
-
+    make a hotkey to toggle it on and off, and maybe a quick toggle in the UI too.
  
-- push the update AUDIOBIT 2.8   to the website 
 
 - add the discord widget and the spotify widget to the web and android app 
 
         the discord should be controlled through the relay thing 
         the spotify should be controlled through spotify api independently 
+        
+
+-#Feature - Make it so scrolling on the spotify widget increases and decreases the volume like the spotify internal volume control 
+
+
+
+add a visualiser in the taskbar for the current audio output, maybe with some customisation options like different styles and colours and stuff
+
 
 #FUTURE WIDGET UPDATES 
 

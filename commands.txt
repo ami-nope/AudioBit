@@ -36,3 +36,8 @@ What it does:
 - also creates a brief text release note with at least 12 lines
 - keeps both outputs updater-friendly
 
+
+RUN LATEST CUSTOM INSTALLER UI
+
+$version = (Get-Content .\version.json | ConvertFrom-Json).currentVersion; Start-Process ".\artifacts\github-release\$version\GitHub-Upload\AudioBit-Setup\AudioBit.Setup.exe"
+

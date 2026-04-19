@@ -10,8 +10,6 @@ public sealed class AppSettingsSnapshot
 
     public bool StartMinimized { get; set; }
 
-    public bool AutoReconnectRemote { get; set; } = true;
-
     public bool RunAsBackgroundService { get; set; } = true;
 
     public bool IsAlwaysOnTop { get; set; }
@@ -29,10 +27,6 @@ public sealed class AppSettingsSnapshot
     public string MicMuteHotKey { get; set; } = "Ctrl + Shift + M";
 
     public int VolumeStepPercent { get; set; } = 5;
-
-    public bool AutoMuteMicOnSoundboard { get; set; }
-
-    public bool DebugMode { get; set; }
 
     public bool IsDarkTheme { get; set; } = true;
 
