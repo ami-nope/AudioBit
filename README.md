@@ -1,6 +1,4 @@
-<div align="center">
-  <img src="Assets/visualizer.svg" alt="AudioBit Visualizer Logo" width="120" />
-</div>
+
 
 <h1 align="center">AudioBit</h1>
 
@@ -95,6 +93,4 @@ Local build pipelines:
 
 <br/>
 
-<div align="center">
-  <img src="Assets/ui-visualizer.svg" alt="AudioBit Abstract Elements" width="400" />
-</div>
+
