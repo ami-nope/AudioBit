@@ -42,11 +42,11 @@ Seamlessly adjust session volumes from any browser over your network via a light
     <tr>
       <td align="center" width="50%">
         <img src="assets/WebRemoteUI.jpg" alt="AudioBit Web Remote Interface" width="360" />
-        <br/><em>Web Session Mixer</em>
+        <br/><em>Web Remote Session Mixer</em>
       </td>
       <td align="center" width="50%">
         <img src="assets/RemoteBit.jpg" alt="AudioBit Phone Remote" width="360" />
-        <br/><em>Mobile Interface Integration</em>
+        <br/><em>Remote Connection Window</em>
       </td>
     </tr>
   </table>
