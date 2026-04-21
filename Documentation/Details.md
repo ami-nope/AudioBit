@@ -1,32 +1,5 @@
 # AudioBit Professional Project Documentation
 
-Document ID: AB-PROJ-DOC-2026-04  
-Version: 1.0  
-Status: Approved Draft  
-Prepared for: AudioBit Product and Engineering Stakeholders  
-Prepared by: Project Documentation Office  
-Date: 2026-04-21
-
----
-
-## Document Control
-
-| Field | Value |
-| --- | --- |
-| Product Name | AudioBit |
-| Product Type | Windows desktop audio control platform with optional remote and third-party integrations |
-| Primary Stack | .NET 8, WPF, C#, XAML |
-| Repositories/Distribution | GitHub releases, Velopack update feed |
-| Current Display Version Baseline | 2.14 (from version.json) |
-| Scope of This Document | Whole-project professional documentation: formation, architecture, updates, current status, and future plans |
-
----
-
-## How To Read This Document
-
-This Markdown has been structured as a 20-page equivalent professional dossier. Each page focuses on one executive or engineering dimension. If exported to PDF with standard enterprise settings (A4/Letter, 11-12 pt body, normal margins), the volume maps to a full-length project handbook.
-
----
 
 ## Table of Contents
 
