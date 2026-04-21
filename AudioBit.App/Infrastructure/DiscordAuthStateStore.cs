@@ -65,7 +65,7 @@ internal sealed class DiscordAuthStateStore
         }
         catch
         {
-            // Auth persistence should never crash the shell.
+            
         }
     }
 }

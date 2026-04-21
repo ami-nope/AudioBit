@@ -1326,7 +1326,7 @@ public sealed class SpotifyService : ISpotifyService
         }
         catch
         {
-            // Logging is best effort only.
+            
         }
     }
 
@@ -1359,7 +1359,7 @@ public sealed class SpotifyService : ISpotifyService
         }
         catch
         {
-            // Logging is best effort only.
+            
         }
     }
 

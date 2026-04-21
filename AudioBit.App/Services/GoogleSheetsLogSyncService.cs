@@ -125,7 +125,7 @@ internal sealed class GoogleSheetsLogSyncService : IDisposable
             }
             catch
             {
-                // Best-effort shutdown only.
+                
             }
         }
 
@@ -204,7 +204,7 @@ internal sealed class GoogleSheetsLogSyncService : IDisposable
         }
         catch (OperationCanceledException) when (_disposeCts.IsCancellationRequested)
         {
-            // Normal shutdown path.
+            
         }
     }
 
@@ -480,7 +480,7 @@ internal sealed class GoogleSheetsLogSyncService : IDisposable
         }
         catch
         {
-            // Fall back to machine name when the registry is unavailable.
+            
         }
 
         return ResolveDeviceName();

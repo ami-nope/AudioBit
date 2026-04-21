@@ -466,7 +466,7 @@ internal sealed class AppUpdaterService : IDisposable
         }
         catch
         {
-            // Logging must never break control flow.
+            
         }
     }
 
@@ -504,7 +504,7 @@ internal sealed class AppUpdaterService : IDisposable
         }
         catch
         {
-            // Logging must never block update flow.
+            
         }
     }
 }

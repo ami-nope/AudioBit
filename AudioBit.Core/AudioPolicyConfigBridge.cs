@@ -130,7 +130,7 @@ internal sealed class AudioPolicyConfigBridge
 
                 if (anySucceeded)
                 {
-                    // Verify the write by reading back immediately.
+                    
                     var verified = TryGetPersistedDefaultAudioEndpoint(processId, flow, out var readbackId);
                     Log($"SET verify: pid={processId} readback='{readbackId}' verified={verified} allRolesOk={allSucceeded}");
                     return true;
@@ -384,20 +384,20 @@ internal sealed class AudioPolicyConfigBridge
         }
     }
 
-    // .NET 8 dropped InterfaceIsIInspectable.  Use InterfaceIsIUnknown and add
-    // three IInspectable stubs (GetIids, GetRuntimeClassName, GetTrustLevel)
-    // before the existing method stubs so the vtable stays aligned.
+    
+    
+    
 
     [Guid("ab3d4648-e242-459f-b02f-541c70306324")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IAudioPolicyConfigFactoryVariantFor21H2
     {
-        // IInspectable
+        
         int GetIids();
         int GetRuntimeClassName();
         int GetTrustLevel();
 
-        // AudioPolicyConfig stubs
+        
         int AddContextVolumeChange();
         int RemoveContextVolumeChanged();
         int AddRingerVibrateStateChanged();
@@ -436,12 +436,12 @@ internal sealed class AudioPolicyConfigBridge
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IAudioPolicyConfigFactoryDownlevel
     {
-        // IInspectable
+        
         int GetIids();
         int GetRuntimeClassName();
         int GetTrustLevel();
 
-        // AudioPolicyConfig stubs
+        
         int AddContextVolumeChange();
         int RemoveContextVolumeChanged();
         int AddRingerVibrateStateChanged();
@@ -549,7 +549,7 @@ internal sealed class AudioPolicyConfigBridge
         }
         catch
         {
-            // Don't let logging failures break routing.
+            
         }
     }
 
@@ -583,7 +583,7 @@ internal sealed class AudioPolicyConfigBridge
         }
         catch
         {
-            // Don't let logging failures break routing.
+            
         }
     }
 }

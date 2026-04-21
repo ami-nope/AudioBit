@@ -226,7 +226,7 @@ internal sealed class DiscordViewModel : ObservableObject, IDisposable
 
     private async Task ToggleMuteAsync()
     {
-        // If not connected, initiate connection. The toggle will apply once connected.
+        
         if (!IsConnected)
         {
             _pendingMuteToggle = true;
@@ -245,7 +245,7 @@ internal sealed class DiscordViewModel : ObservableObject, IDisposable
         {
             var newMute = !IsMuted;
 
-            // If we're unmuting, also undeafen (Discord behavior).
+            
             var newDeaf = IsDeafened;
             if (!newMute && IsDeafened)
             {
@@ -264,7 +264,7 @@ internal sealed class DiscordViewModel : ObservableObject, IDisposable
 
     private async Task ToggleDeafenAsync()
     {
-        // If not connected, initiate connection. The toggle will apply once connected.
+        
         if (!IsConnected)
         {
             _pendingDeafenToggle = true;
@@ -339,7 +339,7 @@ internal sealed class DiscordViewModel : ObservableObject, IDisposable
             ConnectionStatusText = text;
             AppLog.Info("DiscordViewModel", $"Discord connection state changed to {state}.");
 
-            // Execute any pending toggle that triggered the connection.
+            
             if (state == DiscordConnectionState.Connected)
             {
                 if (_pendingMuteToggle)

@@ -190,7 +190,7 @@ function Wait-ForPublishedGitHubRelease([string]$RepositorySlug, [string]$TagNam
             }
             catch
             {
-                # Release may not exist yet while GitHub Actions is still running.
+                
             }
         }
 
@@ -321,7 +321,7 @@ try
     $updatedVersionJson + [Environment]::NewLine | Set-Content -Path $versionFilePath -Encoding utf8
     $versionFileUpdated = $true
 
-    # Match the local environment workaround used by the existing publish script.
+    
     $env:DOTNET_CLI_HOME = Join-Path $repoRoot ".dotnet"
     $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
     $env:MSBuildEnableWorkloadResolver = "false"

@@ -81,7 +81,7 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
-            // Device change notifications are optional; refresh still works by polling.
+            
         }
     }
 
@@ -221,7 +221,7 @@ public sealed class AudioSessionService : IDisposable
     {
         ThrowIfDisposed();
 
-        // Phase 1: Collect live session data from COM *outside* the lock.
+        
         var liveGroups = new Dictionary<int, SessionGroup>();
         bool hasPlaybackEndpoint;
         string playbackDeviceId;
@@ -243,7 +243,7 @@ public sealed class AudioSessionService : IDisposable
 
         ReadDefaultCaptureState(out defaultCapturePeak, out defaultCaptureMuted);
 
-        // Snapshot device state read during CollectLiveGroups.
+        
         lock (_syncRoot)
         {
             playbackDeviceId = _currentPlaybackDeviceId;
@@ -253,10 +253,10 @@ public sealed class AudioSessionService : IDisposable
             hasPlayback = _hasPlaybackDevice;
         }
 
-        // Phase 1.5: Refresh device inventory outside the lock (COM-heavy).
+        
         RefreshDeviceInventory(DateTime.UtcNow);
 
-        // Phase 2: Take the lock only to merge collected data into internal state.
+        
         lock (_syncRoot)
         {
             var now = DateTime.UtcNow;
@@ -324,7 +324,7 @@ public sealed class AudioSessionService : IDisposable
                 model.Icon = group.Icon;
                 model.IsPinned = isPinned;
 
-                // Skip overwriting volume/mute if user just wrote them recently.
+                
                 var skipVolumeOverwrite = _volumeWriteTimestamps.TryGetValue(group.ProcessId, out var volTs)
                     && now - volTs < VolumeWriteGracePeriod;
                 var skipMuteOverwrite = _muteWriteTimestamps.TryGetValue(group.ProcessId, out var muteTs)
@@ -656,9 +656,9 @@ public sealed class AudioSessionService : IDisposable
         }
     }
 
-    /// <summary>
-    /// Change the system-wide default audio endpoint for playback or capture.
-    /// </summary>
+    
+    
+    
     public bool SetSystemDefaultDevice(string deviceId, AudioDeviceFlow flow)
     {
         ThrowIfDisposed();
@@ -706,7 +706,7 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
-            // Ignore unregister failures during shutdown.
+            
         }
 
         _deviceEnumerator.Dispose();
@@ -749,8 +749,8 @@ public sealed class AudioSessionService : IDisposable
             defaultDevice?.Dispose();
         }
 
-        // Also enumerate sessions on non-default render devices so that apps
-        // routed to a different output remain visible in the mixer.
+        
+        
         try
         {
             var allDevices = _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
@@ -782,7 +782,7 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
-            // Non-default device enumeration is best effort.
+            
         }
 
         return hasPlaybackDevice;
@@ -813,9 +813,9 @@ public sealed class AudioSessionService : IDisposable
                 var volume = simpleAudioVolume.Volume;
                 var isMuted = simpleAudioVolume.Mute;
 
-                // On non-default devices, SimpleAudioVolume may report 0 even
-                // when the session is actively producing audio.  Use the raw
-                // peak in that case so routed apps stay visible.
+                
+                
+                
                 var effectiveVolume = volume;
                 if (!isDefaultDevice && volume <= AppAudioModel.SilenceThreshold && peak > AppAudioModel.SilenceThreshold)
                 {
@@ -842,7 +842,7 @@ public sealed class AudioSessionService : IDisposable
             }
             catch
             {
-                // Sessions are volatile and can disappear between enumeration and access.
+                
             }
             finally
             {
@@ -856,10 +856,10 @@ public sealed class AudioSessionService : IDisposable
         ForEachActiveSessionOnDevice(DataFlow.Render, sessionAction);
     }
 
-    /// <summary>
-    /// Optimized variant: only invokes the action on sessions belonging to a specific processId.
-    /// Avoids iterating every session on every device when only one process needs updating.
-    /// </summary>
+    
+    
+    
+    
     private void ForMatchingSession(int targetProcessId, Action<AudioSessionControl> sessionAction)
     {
         if (targetProcessId <= 0)
@@ -878,7 +878,7 @@ public sealed class AudioSessionService : IDisposable
 
     private void ForEachActiveSessionOnDevice(DataFlow dataFlow, Action<AudioSessionControl, int> sessionAction)
     {
-        // Apply to sessions on the default device.
+        
         MMDevice? defaultDevice = null;
         string defaultDeviceId = string.Empty;
 
@@ -890,14 +890,14 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
-            // No default endpoint available.
+            
         }
         finally
         {
             defaultDevice?.Dispose();
         }
 
-        // Also apply to sessions on non-default devices for routed apps.
+        
         try
         {
             var allDevices = _deviceEnumerator.EnumerateAudioEndPoints(dataFlow, DeviceState.Active);
@@ -915,7 +915,7 @@ public sealed class AudioSessionService : IDisposable
                 }
                 catch
                 {
-                    // Non-default device session access is best effort.
+                    
                 }
                 finally
                 {
@@ -925,7 +925,7 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
-            // Non-default device enumeration is best effort.
+            
         }
     }
 
@@ -949,7 +949,7 @@ public sealed class AudioSessionService : IDisposable
             }
             catch
             {
-                // Ignore sessions that disappear while mutating the device state.
+                
             }
             finally
             {
@@ -1511,9 +1511,9 @@ public sealed class AudioSessionService : IDisposable
 
     private void ReadDeviceRouteCacheEntry(int processId, DeviceRouteCacheEntry route, DateTime now)
     {
-        // Skip readback entirely while any write is still in-flight or pending retry.
-        // This prevents the readback from overwriting a user-initiated route change
-        // before the write has had a chance to propagate through the OS.
+        
+        
+        
         if (route.IsRenderWritePending || route.IsRenderWriteQueued
             || route.IsCaptureWritePending || route.IsCaptureWriteQueued)
         {
@@ -1599,7 +1599,7 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
-            // Device enumeration is best effort; keep the system default option.
+            
         }
 
         return options;
@@ -1794,7 +1794,7 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
-            // Don't let logging failures break routing.
+            
         }
     }
 
@@ -1827,7 +1827,7 @@ public sealed class AudioSessionService : IDisposable
         }
         catch
         {
-            // Don't let logging failures break routing.
+            
         }
     }
 

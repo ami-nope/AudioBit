@@ -2,11 +2,11 @@ using System.Runtime.InteropServices;
 
 namespace AudioBit.Core;
 
-/// <summary>
-/// Switches the system-wide default audio endpoint using the undocumented
-/// IPolicyConfig COM interface. This is the same mechanism used by Windows
-/// Sound Settings to change the default playback / capture device.
-/// </summary>
+
+
+
+
+
 internal sealed class SystemDefaultDeviceSwitcher
 {
     public bool SetDefaultEndpoint(string deviceId, AudioDeviceFlow flow)
@@ -20,7 +20,7 @@ internal sealed class SystemDefaultDeviceSwitcher
         {
             var policyConfig = (IPolicyConfig)new PolicyConfigClient();
 
-            // Set for all three roles so every category of audio moves.
+            
             var hr0 = policyConfig.SetDefaultEndpoint(deviceId, ERole.Console);
             var hr1 = policyConfig.SetDefaultEndpoint(deviceId, ERole.Multimedia);
             var hr2 = policyConfig.SetDefaultEndpoint(deviceId, ERole.Communications);
@@ -33,9 +33,9 @@ internal sealed class SystemDefaultDeviceSwitcher
         }
     }
 
-    // -----------------------------------------------------------------------
-    //  COM interop declarations for IPolicyConfig / PolicyConfigClient
-    // -----------------------------------------------------------------------
+    
+    
+    
 
     private enum ERole
     {

@@ -86,7 +86,7 @@ internal static class ShellPinService
                 }
                 catch
                 {
-                    // Fall through to the next candidate.
+                    
                 }
             }
 
@@ -138,7 +138,7 @@ internal static class ShellPinService
             }
             catch
             {
-                // Ignore a single verb failure and keep scanning.
+                
             }
             finally
             {

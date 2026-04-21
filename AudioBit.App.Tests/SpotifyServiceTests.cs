@@ -272,7 +272,6 @@ public sealed class SpotifyServiceTests
             }
             catch
             {
-                // Test cleanup should not hide assertion failures.
             }
         }
     }

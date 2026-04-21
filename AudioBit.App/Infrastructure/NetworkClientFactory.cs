@@ -40,7 +40,7 @@ internal static class NetworkClientFactory
         }
         catch
         {
-            // Proxy discovery can fail on some systems; continue without overriding.
+            
         }
 
         try
@@ -49,7 +49,7 @@ internal static class NetworkClientFactory
         }
         catch
         {
-            // Some platforms reject custom websocket headers; continue without them.
+            
         }
 
         return socket;

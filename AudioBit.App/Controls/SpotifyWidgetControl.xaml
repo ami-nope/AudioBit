@@ -327,7 +327,7 @@
                                         </Image>
                                     </Grid>
                                 </Border>
-                                <!-- Glossy rim overlay -->
+                                
                                 <Border CornerRadius="12" BorderBrush="#FF121212" BorderThickness="1" />
                             </Grid>
 

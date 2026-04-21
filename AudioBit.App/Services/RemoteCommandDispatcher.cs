@@ -164,8 +164,8 @@ internal sealed class RemoteCommandDispatcher
         Func<string, int?> resolveAppProcessId,
         bool isOutput)
     {
-        // Some remote builds can emit set_output_device/set_input_device with an app token.
-        // Route those as per-app commands so global defaults are not changed accidentally.
+        
+        
         var appToken = ReadString(payload, "app");
         if (!string.IsNullOrWhiteSpace(appToken))
         {

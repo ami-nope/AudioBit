@@ -67,7 +67,7 @@ public partial class App : Application
             var spotifyViewModel = new SpotifyViewModel(spotifyService, spotifyClientId);
             AppLog.Trace("App", $"Spotify services initialized. configured={!string.IsNullOrWhiteSpace(spotifyClientId)}");
 
-            // Discord RPC setup.
+            
             var discordAuthStateStore = new DiscordAuthStateStore();
             var discordClientId = DiscordClientIdResolver.ResolveClientId();
             var discordClientSecret = DiscordClientIdResolver.ResolveClientSecret();

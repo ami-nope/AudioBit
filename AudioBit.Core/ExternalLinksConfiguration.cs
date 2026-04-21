@@ -90,7 +90,7 @@ public static class ExternalLinksConfigurationLoader
         }
         catch
         {
-            // Fall back to a bundled file or built-in defaults when remote config is unavailable.
+            
         }
 
         if (!string.IsNullOrWhiteSpace(localFallbackPath) && File.Exists(localFallbackPath))
@@ -106,7 +106,7 @@ public static class ExternalLinksConfigurationLoader
             }
             catch
             {
-                // Ignore local fallback failures and continue to built-in defaults.
+                
             }
         }
 

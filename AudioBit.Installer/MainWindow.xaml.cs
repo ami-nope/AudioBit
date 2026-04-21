@@ -969,7 +969,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (InvalidOperationException)
         {
-            // Ignore drag requests from transient mouse states.
+            
         }
     }
 
@@ -1067,8 +1067,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static string BuildVisibleRatingStars(double? ratingValue)
     {
-        const string filledStar = "\u2605";
-        const string emptyStar = "\u2606";
+        const string filledStar = "*";
+        const string emptyStar = "-";
 
         if (!ratingValue.HasValue)
         {
@@ -1086,11 +1086,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (!ratingValue.HasValue)
         {
-            return "☆☆☆☆☆";
+            return "-----";
         }
 
         var filledStars = Math.Clamp((int)Math.Round(ratingValue.Value, MidpointRounding.AwayFromZero), 0, 5);
-        return string.Concat(new string('★', filledStars), new string('☆', 5 - filledStars));
+        return string.Concat(new string('*', filledStars), new string('-', 5 - filledStars));
     }
 
     private static void SetFillScale(Border border, double scale, bool immediate)

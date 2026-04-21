@@ -365,7 +365,7 @@ public partial class MainWindow : Window
         }
         catch (InvalidOperationException)
         {
-            // Ignore drag requests from transient mouse states.
+            
         }
     }
 

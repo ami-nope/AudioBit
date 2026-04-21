@@ -135,7 +135,7 @@ internal sealed class RelayConnection : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // expected on shutdown/reconnect
+            
         }
         catch (Exception ex)
         {
@@ -205,7 +205,7 @@ internal sealed class RelayConnection : IDisposable
         }
         catch
         {
-            // swallow close errors
+            
         }
         finally
         {

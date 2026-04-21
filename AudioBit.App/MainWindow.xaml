@@ -3241,7 +3241,7 @@
                                     </StackPanel>
 
                                     <Grid Margin="0,12,0,0">
-                                        <!-- Connect button (visible when NOT authenticated) -->
+                                        
                                         <Button Command="{Binding Spotify.ConnectCommand}">
                                             <Button.Style>
                                                 <Style TargetType="{x:Type Button}" BasedOn="{StaticResource SpotifySettingsConnectButtonStyle}">
@@ -3257,7 +3257,7 @@
                                                        FontWeight="SemiBold"
                                                        Text="{Binding Spotify.ConnectButtonText}" />
                                         </Button>
-                                        <!-- Disconnect button (visible when authenticated) -->
+                                        
                                         <Button Command="{Binding Spotify.DisconnectCommand}"
                                                 Width="168" Height="46" Padding="18,0"
                                                 HorizontalAlignment="Left"
@@ -3339,7 +3339,7 @@
                                     </StackPanel>
 
                                     <Grid Margin="0,12,0,0">
-                                        <!-- Connect button (visible when NOT connected) -->
+                                        
                                         <Button Command="{Binding Discord.ConnectCommand}"
                                                 Width="168" Height="46" Padding="18,0"
                                                 HorizontalAlignment="Left"
@@ -3386,7 +3386,7 @@
                                                        FontWeight="SemiBold"
                                                        Text="{Binding Discord.ConnectButtonText}" />
                                         </Button>
-                                        <!-- Disconnect button (visible when connected) -->
+                                        
                                         <Button Command="{Binding Discord.DisconnectCommand}"
                                                 Width="168" Height="46" Padding="18,0"
                                                 HorizontalAlignment="Left"

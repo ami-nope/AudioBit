@@ -65,7 +65,7 @@ public sealed class SpotifyAuthStateStore
         }
         catch
         {
-            // Auth persistence should never crash the shell.
+            
         }
     }
 }

@@ -147,7 +147,7 @@
                             </Grid>
                         </Grid>
 
-                        <!-- Mute / Unmute Button -->
+                        
                         <Button Grid.Row="2"
                                 x:Name="MuteButton"
                                 Margin="0,0,0,8"
@@ -187,7 +187,7 @@
                             </Viewbox>
                         </Button>
 
-                        <!-- Deafen / Undeafen Button -->
+                        
                         <Button Grid.Row="3"
                                 x:Name="DeafenButton"
                                 Click="DeafenButton_OnClick"

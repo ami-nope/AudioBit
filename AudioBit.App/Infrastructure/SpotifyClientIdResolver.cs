@@ -2,7 +2,7 @@ namespace AudioBit.App.Infrastructure;
 
 internal static class SpotifyClientIdResolver
 {
-    // Production builds use a fixed built-in Spotify Web API client ID.
+    
     private const string BuiltInClientId = "ee2c218f24834f1bb7ed892210193e68";
 
     public static string Resolve(AppSettingsStore appSettingsStore, SpotifyAuthStateStore authStateStore)

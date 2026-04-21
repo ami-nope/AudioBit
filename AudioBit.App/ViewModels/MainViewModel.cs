@@ -970,7 +970,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 _ = Task.Run(() =>
                 {
                     try { _audioSessionService.SetSystemDefaultDevice(normalized, AudioDeviceFlow.Render); }
-                    catch { /* best effort */ }
+                    catch {  }
                 });
             }
 
@@ -994,7 +994,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
                 _ = Task.Run(() =>
                 {
                     try { _audioSessionService.SetSystemDefaultDevice(normalized, AudioDeviceFlow.Capture); }
-                    catch { /* best effort */ }
+                    catch {  }
                 });
             }
 
@@ -2998,7 +2998,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Debounce: restart the timer so rapid property changes batch into one write.
+        
         _persistDebounceTimer.Stop();
         _persistDebounceTimer.Start();
     }
@@ -3047,7 +3047,7 @@ internal sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch
         {
-            // Startup registration is best effort; keep the app responsive if registry access fails.
+            
         }
     }
 

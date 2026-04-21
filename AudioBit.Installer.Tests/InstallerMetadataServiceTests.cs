@@ -42,7 +42,7 @@ public sealed class InstallerMetadataServiceTests
               <head>
                 <script type="application/ld+json">
                 {
-                  "@context": "https://schema.org",
+                  "@context": "https:
                   "@type": "SoftwareApplication",
                   "aggregateRating": {
                     "@type": "AggregateRating",

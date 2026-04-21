@@ -344,7 +344,7 @@ internal sealed class RemoteClientService : IDisposable
         }
         catch
         {
-            // Ignore shutdown races.
+            
         }
 
         _lifetimeCts.Dispose();
@@ -556,7 +556,7 @@ internal sealed class RemoteClientService : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // ignore during shutdown
+            
         }
         catch (Exception ex)
         {
@@ -679,8 +679,8 @@ internal sealed class RemoteClientService : IDisposable
                 var pcOnline = ReadBool(payload, "pc_online");
                 if (pcOnline.HasValue)
                 {
-                    // `pc_online` is primarily useful to remotes. For the PC app, treat it as a hint only,
-                    // so transient/ambiguous broadcasts do not invalidate a live websocket session.
+                    
+                    
                     relayConnected = pcOnline.Value;
                     if (!pcOnline.Value && reasonPcDown)
                     {
@@ -722,7 +722,7 @@ internal sealed class RemoteClientService : IDisposable
                 TryReadDeviceMetadata(root, payload, out var metadata);
                 if (!metadata.IsEmpty)
                 {
-                    // Metadata implies an attached device even when count fields are stale.
+                    
                     remoteConnected = true;
                 }
 
@@ -1372,7 +1372,7 @@ internal sealed class RemoteClientService : IDisposable
         }
         catch
         {
-            // Logging must never break control flow.
+            
         }
     }
 
@@ -1411,7 +1411,7 @@ internal sealed class RemoteClientService : IDisposable
         }
         catch
         {
-            // Logging must never break control flow.
+            
         }
     }
 

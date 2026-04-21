@@ -107,7 +107,7 @@ try
     New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 
     @"
-# AudioBit $displayVersion
+AudioBit $displayVersion
 
 - Local updater-friendly Velopack package build
 - Channel: stable

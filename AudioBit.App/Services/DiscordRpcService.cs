@@ -180,7 +180,7 @@ internal sealed class DiscordRpcService : IDisposable
     private async Task ConnectLoopAsync(CancellationToken cancellationToken)
     {
         Log("Discord RPC connection loop started.");
-        // Single attempt — no retry loop. User must explicitly reconnect on failure.
+        
         try
         {
             SetConnectionState(DiscordConnectionState.Connecting);
@@ -206,7 +206,7 @@ internal sealed class DiscordRpcService : IDisposable
 
     private async Task<bool> TryConnectAsync(CancellationToken cancellationToken)
     {
-        // Try each pipe index until we find Discord.
+        
         for (var i = 0; i <= MaxPipeIndex; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -219,11 +219,11 @@ internal sealed class DiscordRpcService : IDisposable
             {
                 await pipe.ConnectAsync(PipeConnectTimeoutMs, cancellationToken).ConfigureAwait(false);
 
-                // Send handshake.
+                
                 var handshakeJson = JsonSerializer.Serialize(new { v = 1, client_id = _clientId });
                 await WritePipeMessageAsync(pipe, OpcodeHandshake, handshakeJson, cancellationToken).ConfigureAwait(false);
 
-                // Read handshake response.
+                
                 var (opcode, responseJson) = await ReadPipeMessageAsync(pipe, cancellationToken).ConfigureAwait(false);
                 if (opcode != OpcodeFrame)
                 {
@@ -236,7 +236,7 @@ internal sealed class DiscordRpcService : IDisposable
 
                 Trace($"Handshake response event={TryGetString(root, "evt") ?? "(unknown)"} pipe={pipeName}");
 
-                // Check for READY event.
+                
                 if (TryGetString(root, "evt") != "READY")
                 {
                     pipe.Dispose();
@@ -246,10 +246,10 @@ internal sealed class DiscordRpcService : IDisposable
                 _pipe = pipe;
                 Log($"Connected to Discord via pipe {pipeName}");
 
-                // Start the read loop on a background thread.
+                
                 _readLoopTask = Task.Run(() => ReadLoopAsync(cancellationToken), cancellationToken);
 
-                // Authenticate.
+                
                 var authenticated = await AuthenticateAsync(cancellationToken).ConfigureAwait(false);
                 if (!authenticated)
                 {
@@ -258,10 +258,10 @@ internal sealed class DiscordRpcService : IDisposable
                     return false;
                 }
 
-                // Subscribe to voice settings updates.
+                
                 await SubscribeToVoiceSettingsAsync(cancellationToken).ConfigureAwait(false);
 
-                // Get initial voice settings.
+                
                 var initialSettings = await GetVoiceSettingsAsync().ConfigureAwait(false);
                 if (initialSettings is not null)
                 {
@@ -301,7 +301,7 @@ internal sealed class DiscordRpcService : IDisposable
 
     private async Task<bool> AuthenticateAsync(CancellationToken cancellationToken)
     {
-        // If we have a saved token that isn't expired, try AUTHENTICATE directly.
+        
         if (TryLoadSavedToken(out var savedToken))
         {
             _tokenState = savedToken;
@@ -311,12 +311,12 @@ internal sealed class DiscordRpcService : IDisposable
                 return true;
             }
 
-            // Token rejected - clear and re-authorize.
+            
             _tokenState = null;
             _authStateStore.Clear();
         }
 
-        // Need to AUTHORIZE (user consent).
+        
         return await AuthorizeAndAuthenticateAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -341,9 +341,9 @@ internal sealed class DiscordRpcService : IDisposable
                 return false;
             }
 
-            // A non-error AUTHENTICATE frame means the token is valid for RPC.
-            // Discord may include user data when "identify" is granted, but the
-            // widget does not need that payload to consider the session connected.
+            
+            
+            
             if (response.TryGetProperty("data", out var data)
                 && data.TryGetProperty("user", out _))
             {
@@ -368,8 +368,8 @@ internal sealed class DiscordRpcService : IDisposable
     {
         SetConnectionState(DiscordConnectionState.WaitingForAuthorization);
 
-        // Send AUTHORIZE - this will show a prompt in the Discord client.
-        // Use a longer timeout because the user needs time to click "Authorize".
+        
+        
         var nonce = Guid.NewGuid().ToString("N");
         Log($"Sending Discord AUTHORIZE. clientId={_clientId} scopes={string.Join(",", AuthorizeScopes)}");
         var payload = new
@@ -399,7 +399,7 @@ internal sealed class DiscordRpcService : IDisposable
             return false;
         }
 
-        // Check for error response first.
+        
         if (authResponse.TryGetProperty("evt", out var evtElem)
             && evtElem.ValueKind == JsonValueKind.String
             && evtElem.GetString() == "ERROR")
@@ -425,7 +425,7 @@ internal sealed class DiscordRpcService : IDisposable
             return false;
         }
 
-        // Extract the authorization code.
+        
         string? code = null;
         if (authResponse.TryGetProperty("data", out var data)
             && data.TryGetProperty("code", out var codeElement)
@@ -443,11 +443,11 @@ internal sealed class DiscordRpcService : IDisposable
 
         Log("AUTHORIZE returned an authorization code.");
 
-        // Try using the code directly as an access_token (works for RPC IPC).
+        
         var success = await TryAuthenticateWithTokenAsync(code, cancellationToken).ConfigureAwait(false);
         if (!success)
         {
-            // Fall back to exchanging code for access_token via REST.
+            
             Log("Direct code auth failed, trying token exchange...");
             var accessToken = await ExchangeCodeForTokenAsync(code, cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(accessToken))
@@ -465,10 +465,10 @@ internal sealed class DiscordRpcService : IDisposable
                 return false;
             }
 
-            code = accessToken; // Use the exchanged token for persistence.
+            code = accessToken; 
         }
 
-        // Persist the token.
+        
         _tokenState = new DiscordTokenState
         {
             AccessToken = code,
@@ -679,11 +679,11 @@ internal sealed class DiscordRpcService : IDisposable
                 ("Operation", "ReadLoopAsync"));
         }
 
-        // Connection lost, attempt reconnect.
+        
         DisconnectPipe();
         SetConnectionState(DiscordConnectionState.Disconnected);
 
-        // Cancel all pending commands.
+        
         foreach (var kvp in _pendingCommands)
         {
             kvp.Value.TrySetCanceled();
@@ -691,8 +691,8 @@ internal sealed class DiscordRpcService : IDisposable
 
         _pendingCommands.Clear();
 
-        // Do NOT auto-reconnect. The user must explicitly reconnect
-        // via the widget buttons or the Connect button in settings.
+        
+        
     }
 
     private void HandleFrame(string json)
@@ -704,7 +704,7 @@ internal sealed class DiscordRpcService : IDisposable
             var evt = TryGetString(root, "evt");
             Trace($"HandleFrame evt={evt ?? "(none)"}");
 
-            // Check if this is a response to a pending command (has nonce).
+            
             if (root.TryGetProperty("nonce", out var nonceElement)
                 && nonceElement.ValueKind != JsonValueKind.Null)
             {
@@ -718,7 +718,7 @@ internal sealed class DiscordRpcService : IDisposable
                 }
             }
 
-            // Check for subscription events.
+            
             if (string.Equals(evt, "VOICE_SETTINGS_UPDATE", StringComparison.Ordinal))
             {
                 if (root.TryGetProperty("data", out var data))
