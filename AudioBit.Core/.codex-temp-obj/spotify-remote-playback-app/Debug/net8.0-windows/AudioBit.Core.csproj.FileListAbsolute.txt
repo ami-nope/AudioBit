@@ -1,6 +1,0 @@
-C:\Users\amiya\Desktop\AudioBit\AudioBit.Core\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioBit.Core.csproj.AssemblyReference.cache
-C:\Users\amiya\Desktop\AudioBit\AudioBit.Core\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioBit.Core.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\amiya\Desktop\AudioBit\AudioBit.Core\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioBit.Core.AssemblyInfoInputs.cache
-C:\Users\amiya\Desktop\AudioBit\AudioBit.Core\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioBit.Core.AssemblyInfo.cs
-C:\Users\amiya\Desktop\AudioBit\AudioBit.Core\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioBit.Core.csproj.CoreCompileInputs.cache
-C:\Users\amiya\Desktop\AudioBit\AudioBit.Core\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioBit.Core.sourcelink.json

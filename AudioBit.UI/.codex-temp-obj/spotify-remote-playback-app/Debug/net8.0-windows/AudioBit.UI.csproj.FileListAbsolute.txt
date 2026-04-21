@@ -1,6 +1,0 @@
-C:\Users\amiya\Desktop\AudioBit\AudioBit.UI\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\Resources\ControlStyles.baml
-C:\Users\amiya\Desktop\AudioBit\AudioBit.UI\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\Resources\Palette.baml
-C:\Users\amiya\Desktop\AudioBit\AudioBit.UI\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioMeterControl.g.cs
-C:\Users\amiya\Desktop\AudioBit\AudioBit.UI\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\GeneratedInternalTypeHelper.g.cs
-C:\Users\amiya\Desktop\AudioBit\AudioBit.UI\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioBit.UI_MarkupCompile.cache
-C:\Users\amiya\Desktop\AudioBit\AudioBit.UI\.codex-temp-obj\spotify-remote-playback-app\Debug\net8.0-windows\AudioBit.UI_MarkupCompile.lref

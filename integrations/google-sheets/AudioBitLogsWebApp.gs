@@ -1,5 +1,5 @@
-const AUDIOBIT_SPREADSHEET_ID = 'PUT_YOUR_SPREADSHEET_ID_HERE';
-const AUDIOBIT_SPREADSHEET_URL = 'PUT_YOUR_SPREADSHEET_URL_HERE';
+const AUDIOBIT_SPREADSHEET_ID = '';
+const AUDIOBIT_SPREADSHEET_URL = '';
 const AUDIOBIT_DEFAULT_SHEET = 'Sheet1';
 const AUDIOBIT_SCRIPT_VERSION = '2026-04-06.2';
 const AUDIOBIT_HEADER = [
@@ -87,12 +87,12 @@ function resolveSheetTarget_(payload, deviceId) {
 
 function openSpreadsheet_() {
   const spreadsheetId = String(AUDIOBIT_SPREADSHEET_ID || '').trim();
-  if (spreadsheetId && spreadsheetId !== 'PUT_YOUR_SPREADSHEET_ID_HERE') {
+  if (spreadsheetId && spreadsheetId !== '') {
     return SpreadsheetApp.openById(spreadsheetId);
   }
 
   const spreadsheetUrl = String(AUDIOBIT_SPREADSHEET_URL || '').trim();
-  if (spreadsheetUrl && spreadsheetUrl !== 'PUT_YOUR_SPREADSHEET_URL_HERE') {
+  if (spreadsheetUrl && spreadsheetUrl !== '') {
     return SpreadsheetApp.openByUrl(spreadsheetUrl);
   }
 
