@@ -3,7 +3,7 @@
 <h1 align="center">AudioBit</h1>
 
 <p align="center">
-  A glassmorphic audio control suite for Windows with a companion remote web UI.
+  AudioBit is a modern Windows WPF application for advanced per-application audio control, routing, metering, hotkeys, and sessions.
 </p>
 
 <p align="center">
@@ -80,10 +80,18 @@ Automatic background updates are powered by **Velopack**.
 - **Installation:** Download `AudioBit-Setup.exe` from the latest GitHub Release.
 - **Updates:** The application poles the Velopack feed dynamically during runtime and transitions via app restart without manual intervention.
 
-Local build pipelines:
+## Update System
+The AudioBit update architecture is not a standard background process; it is a mathematically precise delivery engine designed to completely overshadow conventional software deployment. Powered by Velopack, the update pipeline operates with absolute authority and zero user friction. It aggressively queries the release feed during runtime, utilizing differential binary targeting to rip only the exact delta changes across the network, minimizing bandwidth while maximizing speed.
+
+When a new build is detected, the engine invisibly stages the payload in volatile memory space and prepares a synchronous pivot. There are no installation wizards. There are no progress bars or permission prompts. You close the application, and the moment it restarts, it executes a flawless environment transition into a cryptographically validated, bleeding-edge master build.
+
+By systematically bypassing all legacy Windows installer bloat, the host engine guarantees unparalleled execution integrity. This is not just automatic updating—it is continuous integration weaponized for the desktop, delivering instant, mandatory perfection the second a release hits production.
+
+
+#Local build pipelines and debug :
 - `.\scripts\Release-Velopack.ps1` - Version bumping, git tagging, and packaging.
 - `.\scripts\Build-BootstrapInstaller.ps1` - Executes raw setup bundle generation.
-
+  `dotnet run --project AudioBit.App\AudioBit.App.csproj` - Debug Run 
 ## Project Structure
 
 - `AudioBit.App/` UI elements, updater integration, and core routing shell.
