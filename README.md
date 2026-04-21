@@ -19,7 +19,7 @@
 <br/>
 
 <div align="center">
-  <img src="Assets/MainDesktop.jpg" alt="AudioBit Desktop App Interface" width="800" style="border-radius: 8px;" />
+  <img src="assets/MainDesktop.jpg" alt="AudioBit Desktop App Interface" width="800" style="border-radius: 8px;" />
 </div>
 
 <br/>
@@ -41,11 +41,11 @@ Seamlessly adjust session volumes from any browser over your network via a light
   <table>
     <tr>
       <td align="center" width="50%">
-        <img src="Assets/WebRemoteUI.jpg" alt="AudioBit Web Remote Interface" width="360" />
+        <img src="assets/WebRemoteUI.jpg" alt="AudioBit Web Remote Interface" width="360" />
         <br/><em>Web Session Mixer</em>
       </td>
       <td align="center" width="50%">
-        <img src="Assets/RemoteBit.jpg" alt="AudioBit Phone Remote" width="360" />
+        <img src="assets/RemoteBit.jpg" alt="AudioBit Phone Remote" width="360" />
         <br/><em>Mobile Interface Integration</em>
       </td>
     </tr>
