@@ -1,7 +1,7 @@
 {
   "relay": {
-    "http_base_url": "https://audiobit-relay.up.railway.app/",
-    "ws_url": "wss://audiobit-relay.up.railway.app/ws"
+    "http_base_url": "https://audiobit-relay-production-fff7.up.railway.app",
+    "ws_url": "wss://audiobit-relay-production-fff7.up.railway.app/ws"
   },
   "remote_web": {
     "connect_base_url": "https://audiobit-remote.vercel.app/connect"
